@@ -21,13 +21,15 @@
         "year": { "type": "string" },
         "title": { "type": "string" },
         "color": { "type": "string" },
-        "facts": { "type": "array", "items": { "type": "string" } },
+        "facts": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "text": { "type": "string" } } } },
+        "objectives": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "text": { "type": "string" } } } },
         "notes": { "type": "string" },
         "month": { "type": "string" },
+        "date": { "type": "string", "description": "Scheduled date for the lesson (YYYY-MM-DD)" },
         "order": { "type": "number" },
         "updatedAt": { "type": "object" }
       },
-      "required": ["id", "icon", "year", "title", "color", "facts", "month"]
+      "required": ["id", "icon", "year", "title", "color", "facts", "objectives", "month", "date"]
     }
   },
   "firestore": {
