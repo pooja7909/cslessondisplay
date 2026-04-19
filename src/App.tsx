@@ -9,7 +9,8 @@ import {
   query, 
   where,
   serverTimestamp,
-  getDoc
+  getDoc,
+  writeBatch
 } from "firebase/firestore";
 import { db } from "./lib/firebase";
 import { Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy, RefreshCw, Key, Calendar as CalendarIcon, LayoutList, ChevronRight, GripVertical } from "lucide-react";
@@ -45,6 +46,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     year: "Year 8",
     title: "HTML & CSS",
     color: "col0",
+    order: 0,
     facts: [
       createFact("Markup (HTML) defines structure; CSS controls appearance"),
       createFact("Tags, attributes, selectors, and the box model are core concepts"),
@@ -61,6 +63,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     year: "Year 8",
     title: "e-Safety & Privacy",
     color: "col7",
+    order: 1,
     facts: [
       createFact("Understanding digital footprints and long-term consequences"),
       createFact("Recognizing phishing, social engineering, and online risks"),
@@ -77,6 +80,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     year: "Year 9",
     title: "VEX VR Robotics",
     color: "col1",
+    order: 2,
     facts: [
       createFact("Block-based or Python coding controls a virtual robot"),
       createFact("Reinforces sequencing, loops, and conditional logic"),
@@ -93,6 +97,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     year: "Year 9",
     title: "Data Representation",
     color: "col4",
+    order: 3,
     facts: [
       createFact("Binary (Base-2) and Hexadecimal (Base-16) systems"),
       createFact("How text (ASCII/Unicode) and images are stored as bits"),
@@ -109,6 +114,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     year: "Year 10",
     title: "Functions & Subprograms",
     color: "col2",
+    order: 4,
     facts: [
       createFact("A function is a named, reusable block of code"),
       createFact("Parameters pass data in; return values pass results out"),
@@ -125,6 +131,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     year: "Year 10",
     title: "Algorithms & Search",
     color: "col6",
+    order: 5,
     facts: [
       createFact("Linear search vs Binary search for efficiency"),
       createFact("Bubble sort and Merge sort processes"),
@@ -141,6 +148,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     year: "Year 12",
     title: "Relational SQL",
     color: "col3",
+    order: 6,
     facts: [
       createFact("Structured Query Language for relational databases"),
       createFact("SELECT, WHERE, ORDER BY, GROUP BY are foundational clauses"),
@@ -157,6 +165,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     year: "Year 12",
     title: "Computational Complexity",
     color: "col5",
+    order: 7,
     facts: [
       createFact("Big O notation — measuring algorithm performance"),
       createFact("Time complexity (O(1), O(n), O(n²), O(log n))"),
@@ -184,6 +193,7 @@ interface LessonCard {
   notes: string;
   month: string;
   date: string;
+  order: number;
   updatedAt?: any;
 }
 
@@ -253,7 +263,6 @@ export default function App() {
       const data = snap.docs.map(d => {
         const docData = d.data();
         // Migration/Sanitization: Ensure mandatory fields exist for UI
-        // And migrate facts to object array if they are strings
         const facts = (docData.facts || []).map((f: any) => 
           typeof f === 'string' ? createFact(f) : f
         );
@@ -262,7 +271,8 @@ export default function App() {
           ...docData,
           facts,
           date: docData.date || format(new Date(), 'yyyy-MM-dd'),
-          notes: docData.notes || ""
+          notes: docData.notes || "",
+          order: typeof docData.order === 'number' ? docData.order : 0
         } as LessonCard;
       });
       setCards(data);
@@ -319,6 +329,11 @@ export default function App() {
   const addCard = async () => {
     if (!syncKey) return;
     const id = "c" + Date.now();
+    
+    // Find highest order in current month to append at end
+    const lastCard = [...currentMonthCards].sort((a,b) => b.order - a.order)[0];
+    const newOrder = lastCard ? lastCard.order + 1 : 0;
+
     const newCard: LessonCard = {
       id,
       icon: "📚",
@@ -328,20 +343,43 @@ export default function App() {
       facts: [createFact("Add a key point here")],
       notes: "",
       month: config.activeMonth,
-      date: format(new Date(), 'yyyy-MM-dd')
+      date: format(new Date(), 'yyyy-MM-dd'),
+      order: newOrder
     };
     const cardRef = doc(db, "lesson_profiles", syncKey, "cards", id);
     await setDoc(cardRef, { ...newCard, updatedAt: serverTimestamp() });
     setCurrentCardId(id);
   };
 
+  const reorderCards = async (newOrderedCards: LessonCard[]) => {
+    if (!syncKey) return;
+    
+    // Optimistically update local state for smoothness
+    // We update the full cards array by merging the newly ordered subset
+    const otherCards = cards.filter(c => !newOrderedCards.find(nc => nc.id === c.id));
+    const finalCards = [...otherCards, ...newOrderedCards.map((c, i) => ({ ...c, order: i }))];
+    setCards(finalCards);
+
+    // Persist to Firestore
+    const batch = writeBatch(db);
+    newOrderedCards.forEach((card, index) => {
+      const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
+      batch.update(cardRef, { order: index, updatedAt: serverTimestamp() });
+    });
+    await batch.commit();
+  };
+
   const duplicateToMonth = async () => {
     if (!syncKey || !activeCard || !targetMonth) return;
     try {
       const newId = "c" + Date.now();
-      // Generate new unique IDs for facts when duplicating
       const duplicatedFacts = activeCard.facts.map(f => createFact(f.text));
       
+      // Get order for target month
+      const targetCards = cards.filter(c => c.month === targetMonth);
+      const lastInTarget = [...targetCards].sort((a,b) => b.order - a.order)[0];
+      const newOrder = lastInTarget ? lastInTarget.order + 1 : 0;
+
       const newCard: LessonCard = {
         ...activeCard,
         id: newId,
@@ -349,6 +387,7 @@ export default function App() {
         month: targetMonth,
         date: activeCard.date || format(new Date(), 'yyyy-MM-dd'),
         notes: activeCard.notes || "",
+        order: newOrder,
         updatedAt: serverTimestamp()
       };
       const cardRef = doc(db, "lesson_profiles", syncKey, "cards", newId);
@@ -395,6 +434,7 @@ export default function App() {
               ...card, 
               month, 
               facts,
+              order: typeof card.order === 'number' ? card.order : 0,
               date: card.date || format(new Date(), 'yyyy-MM-dd'),
               notes: card.notes || "",
               updatedAt: serverTimestamp() 
@@ -415,11 +455,13 @@ export default function App() {
     setModalType(null);
   };
 
-  const currentMonthCards = cards.filter(c => {
-    const monthMatch = c.month === config.activeMonth;
-    const yearMatch = yearFilter === "All Years" || c.year === yearFilter;
-    return monthMatch && yearMatch;
-  });
+  const currentMonthCards = cards
+    .filter(c => {
+      const monthMatch = c.month === config.activeMonth;
+      const yearMatch = yearFilter === "All Years" || c.year === yearFilter;
+      return monthMatch && yearMatch;
+    })
+    .sort((a, b) => a.order - b.order);
   const activeCard = cards.find(c => c.id === currentCardId);
 
   if (!syncKey) {
@@ -615,11 +657,18 @@ export default function App() {
                   Click <strong>+ Add class</strong> to get started
                 </div>
               ) : (
-                <div className="cards-grid">
+                <Reorder.Group 
+                  axis="y" 
+                  values={currentMonthCards} 
+                  onReorder={reorderCards}
+                  className="cards-grid"
+                >
                   {currentMonthCards.map(c => (
-                    <div 
+                    <Reorder.Item 
                       key={c.id} 
-                      className={`card-thumb ${c.color}`}
+                      value={c}
+                      drag={yearFilter === "All Years"}
+                      className={`card-thumb ${c.color} relative group active:scale-[1.02] transition-transform`}
                       onClick={() => setCurrentCardId(c.id)}
                     >
                       <span className="thumb-icon">{c.icon}</span>
@@ -632,9 +681,14 @@ export default function App() {
                       >
                         <Trash2 size={14} />
                       </button>
-                    </div>
+                      {yearFilter === "All Years" && (
+                        <div className="absolute bottom-2 right-2 text-gray-500 opacity-0 group-hover:opacity-40 transition-opacity pointer-events-none">
+                          <GripVertical size={14} />
+                        </div>
+                      )}
+                    </Reorder.Item>
                   ))}
-                </div>
+                </Reorder.Group>
               )}
             </motion.div>
           ) : activeCard ? (
