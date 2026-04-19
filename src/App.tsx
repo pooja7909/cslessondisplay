@@ -13,7 +13,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import { db } from "./lib/firebase";
-import { Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy, RefreshCw, Key, Calendar as CalendarIcon, LayoutList, ChevronRight, GripVertical } from "lucide-react";
+import { Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy, RefreshCw, Key, Calendar as CalendarIcon, LayoutList, ChevronRight, GripVertical, Clock } from "lucide-react";
 import { 
   format, 
   startOfMonth, 
@@ -39,14 +39,25 @@ const createFact = (text: string): Fact => ({
   text
 });
 
+const LiveClock = ({ className, formatStr = "MMM d, h:mm a" }: { className?: string, formatStr?: string }) => {
+  const [time, setTime] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return <span className={className}>{format(time, formatStr)}</span>;
+};
+
 const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
   {
     id: "c1",
     icon: "🌐",
     year: "Year 8",
+    section: "A",
     title: "HTML & CSS",
     color: "col0",
     order: 0,
+    time: "09:00",
     facts: [
       createFact("Markup (HTML) defines structure; CSS controls appearance"),
       createFact("Tags, attributes, selectors, and the box model are core concepts"),
@@ -62,9 +73,11 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     id: "c1_2",
     icon: "🛡️",
     year: "Year 8",
+    section: "B",
     title: "e-Safety & Privacy",
     color: "col7",
     order: 1,
+    time: "10:30",
     facts: [
       createFact("Understanding digital footprints and long-term consequences"),
       createFact("Recognizing phishing, social engineering, and online risks"),
@@ -80,9 +93,11 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     id: "c2",
     icon: "🤖",
     year: "Year 9",
+    section: "A",
     title: "VEX VR Robotics",
     color: "col1",
     order: 2,
+    time: "09:00",
     facts: [
       createFact("Block-based or Python coding controls a virtual robot"),
       createFact("Reinforces sequencing, loops, and conditional logic"),
@@ -98,9 +113,11 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     id: "c2_2",
     icon: "🔢",
     year: "Year 9",
+    section: "C",
     title: "Data Representation",
     color: "col4",
     order: 3,
+    time: "11:00",
     facts: [
       createFact("Binary (Base-2) and Hexadecimal (Base-16) systems"),
       createFact("How text (ASCII/Unicode) and images are stored as bits"),
@@ -116,9 +133,11 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     id: "c3",
     icon: "⚙️",
     year: "Year 10",
+    section: "A",
     title: "Functions & Subprograms",
     color: "col2",
     order: 4,
+    time: "13:30",
     facts: [
       createFact("A function is a named, reusable block of code"),
       createFact("Parameters pass data in; return values pass results out"),
@@ -134,9 +153,11 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     id: "c3_2",
     icon: "🧠",
     year: "Year 10",
+    section: "B",
     title: "Algorithms & Search",
     color: "col6",
     order: 5,
+    time: "14:45",
     facts: [
       createFact("Linear search vs Binary search for efficiency"),
       createFact("Bubble sort and Merge sort processes"),
@@ -152,9 +173,11 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     id: "c4",
     icon: "🗄️",
     year: "Year 12",
+    section: "A",
     title: "Relational SQL",
     color: "col3",
     order: 6,
+    time: "08:30",
     facts: [
       createFact("Structured Query Language for relational databases"),
       createFact("SELECT, WHERE, ORDER BY, GROUP BY are foundational clauses"),
@@ -170,9 +193,11 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     id: "c4_2",
     icon: "🚀",
     year: "Year 12",
+    section: "CS",
     title: "Computational Complexity",
     color: "col5",
     order: 7,
+    time: "10:00",
     facts: [
       createFact("Big O notation — measuring algorithm performance"),
       createFact("Time complexity (O(1), O(n), O(n²), O(log n))"),
@@ -195,6 +220,7 @@ interface LessonCard {
   id: string;
   icon: string;
   year: string;
+  section: string;
   title: string;
   color: string;
   facts: Fact[];
@@ -202,6 +228,7 @@ interface LessonCard {
   notes: string;
   month: string;
   date: string;
+  time: string;
   order: number;
   updatedAt?: any;
 }
@@ -284,6 +311,8 @@ export default function App() {
           facts,
           objectives,
           date: docData.date || format(new Date(), 'yyyy-MM-dd'),
+          time: docData.time || "09:00",
+          section: docData.section || "",
           notes: docData.notes || "",
           order: typeof docData.order === 'number' ? docData.order : 0
         } as LessonCard;
@@ -351,6 +380,7 @@ export default function App() {
       id,
       icon: "📚",
       year: "Year",
+      section: "",
       title: "New topic",
       color: COLORS[cards.length % COLORS.length],
       facts: [createFact("Add a key point here")],
@@ -358,6 +388,7 @@ export default function App() {
       notes: "",
       month: config.activeMonth,
       date: format(new Date(), 'yyyy-MM-dd'),
+      time: "09:00",
       order: newOrder
     };
     const cardRef = doc(db, "lesson_profiles", syncKey, "cards", id);
@@ -402,9 +433,10 @@ export default function App() {
         objectives: duplicatedObjectives,
         month: targetMonth,
         date: activeCard.date || format(new Date(), 'yyyy-MM-dd'),
+        time: activeCard.time || "09:00",
+        section: activeCard.section || "",
         notes: activeCard.notes || "",
         order: newOrder,
-        updatedAt: serverTimestamp()
       };
       const cardRef = doc(db, "lesson_profiles", syncKey, "cards", newId);
       await setDoc(cardRef, newCard);
@@ -456,6 +488,8 @@ export default function App() {
               objectives,
               order: typeof card.order === 'number' ? card.order : 0,
               date: card.date || format(new Date(), 'yyyy-MM-dd'),
+              time: card.time || "09:00",
+              section: card.section || "",
               notes: card.notes || "",
               updatedAt: serverTimestamp() 
             });
@@ -650,7 +684,10 @@ export default function App() {
             >
               <div className="home-header mb-6">
                 <div className="flex flex-col gap-1">
-                  <h2 className="home-month-title">{viewMode === "list" ? config.activeMonth : "Academic Calendar"}</h2>
+                  <div className="flex items-center gap-3">
+                    <h2 className="home-month-title">{viewMode === "list" ? config.activeMonth : "Academic Calendar"}</h2>
+                    <LiveClock className="text-xs text-[#1a1744]/40 font-medium bg-[#1a1744]/5 px-2 py-0.5 rounded-full" />
+                  </div>
                   {viewMode === "list" && (
                     <div className="flex gap-2 overflow-x-auto pb-2 -mb-2 no-scrollbar">
                       {yearGroups.map(y => (
@@ -697,16 +734,19 @@ export default function App() {
                       className={`card-thumb ${c.color} relative group active:scale-[1.02] transition-transform`}
                       onClick={() => setCurrentCardId(c.id)}
                     >
+                      <div className="absolute top-2 right-2 flex flex-col items-end pointer-events-none">
+                        <LiveClock className="text-[10px] font-bold opacity-30" formatStr="p" />
+                        <LiveClock className="text-[8px] font-medium opacity-20" formatStr="EEE, MMM d" />
+                      </div>
                       <span className="thumb-icon">{c.icon}</span>
-                      <div className="thumb-year">{c.year}</div>
+                      <div className="thumb-year">{c.year}{c.section ? ` • ${c.section}` : ""}</div>
                       <div className="thumb-title">{c.title}</div>
                       <div className="flex items-center justify-between mt-auto pt-2">
                         <div className="thumb-facts-count">{c.facts.length} point{c.facts.length !== 1 ? "s" : ""}</div>
-                        {c.updatedAt && (
-                          <div className="text-[9px] opacity-40 font-medium">
-                            {formatTimestamp(c.updatedAt)}
-                          </div>
-                        )}
+                        <div className="text-[9px] opacity-60 font-medium flex flex-col items-end">
+                          <span>{c.date}</span>
+                          <span>{c.time}</span>
+                        </div>
                       </div>
                       <button 
                         className="del-card-btn flex items-center justify-center !p-1.5" 
@@ -753,6 +793,17 @@ export default function App() {
                     placeholder="Year group" 
                   />
                 </span>
+                <span className="exp-year-badge !bg-[#1a1744]/10">
+                  <input 
+                    className="exp-year-inp !text-[#1a1744]" 
+                    value={activeCard.section} 
+                    onChange={(e) => {
+                      const newCards = cards.map(x => x.id === activeCard.id ? { ...x, section: e.target.value } : x);
+                      setCards(newCards);
+                    }}
+                    placeholder="Section" 
+                  />
+                </span>
                 <input 
                   className="exp-card-title" 
                   value={activeCard.title} 
@@ -777,12 +828,25 @@ export default function App() {
                     }}
                   />
                 </div>
+                <div className="flex items-center gap-2 bg-white/50 px-3 py-1.5 rounded-lg border border-white/20">
+                  <Clock size={14} className="text-[#1a1744]/60" />
+                  <input 
+                    type="time"
+                    className="bg-transparent border-none outline-none font-medium text-[#1a1744]"
+                    value={activeCard.time}
+                    onChange={(e) => {
+                      const newCards = cards.map(x => x.id === activeCard.id ? { ...x, time: e.target.value } : x);
+                      setCards(newCards);
+                    }}
+                  />
+                </div>
                 <div className="text-[#1a1744]/40">Scheduled for {activeCard.month}</div>
-                {activeCard.updatedAt && (
-                  <div className="ml-auto text-[10px] opacity-40 font-medium text-[#1a1744]">
-                    Last saved: {formatTimestamp(activeCard.updatedAt)}
+                <div className="ml-auto text-[10px] opacity-40 font-medium text-[#1a1744] flex flex-col items-end">
+                  <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                    Live: <LiveClock formatStr="HH:mm:ss" />
                   </div>
-                )}
+                </div>
               </div>
 
               <div className="save-row">
