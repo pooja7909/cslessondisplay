@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  onAuthStateChanged,
-  User 
-} from "firebase/auth";
-import { 
   collection, 
   doc, 
   onSnapshot, 
@@ -15,12 +11,13 @@ import {
   serverTimestamp,
   getDoc
 } from "firebase/firestore";
-import { auth, db, signIn, logout } from "./lib/firebase";
-import { LogIn, LogOut, Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy } from "lucide-react";
+import { db } from "./lib/firebase";
+import { Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy, RefreshCw, Key } from "lucide-react";
 
 // Constants
 const COLORS = ["col0", "col1", "col2", "col3", "col4", "col5", "col6", "col7"];
 const DEFAULT_MONTHS = ["September", "October", "November"];
+const SYNC_KEY_LS = "lesson_app_sync_key";
 
 const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
   {
@@ -104,8 +101,7 @@ interface UserConfig {
 }
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [syncKey, setSyncKey] = useState<string | null>(localStorage.getItem(SYNC_KEY_LS));
   const [config, setConfig] = useState<UserConfig>({
     title: "Lesson Display",
     activeMonth: "September",
@@ -113,34 +109,24 @@ export default function App() {
   });
   const [cards, setCards] = useState<LessonCard[]>([]);
   const [currentCardId, setCurrentCardId] = useState<string | null>(null);
-  const [modalType, setModalType] = useState<"month" | "export" | "import" | "delete" | "copy" | null>(null);
+  const [modalType, setModalType] = useState<"month" | "export" | "import" | "delete" | "copy" | "sync" | null>(null);
   const [tempMonth, setTempMonth] = useState("");
   const [importText, setImportText] = useState("");
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
   const [targetMonth, setTargetMonth] = useState("");
+  const [newSyncKey, setNewSyncKey] = useState("");
   const [showSavedToast, setShowSavedToast] = useState(false);
 
-  // Auth Listener
+  // Sync logic
   useEffect(() => {
-    return onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-    });
-  }, []);
+    if (!syncKey) return;
+    localStorage.setItem(SYNC_KEY_LS, syncKey);
 
-  // Config & Cards Listener
-  useEffect(() => {
-    if (!user) {
-      setCards([]);
-      return;
-    }
-
-    const configRef = doc(db, "users", user.uid, "config", "main");
+    const configRef = doc(db, "lesson_profiles", syncKey, "config", "main");
     const unsubConfig = onSnapshot(configRef, async (docSnap) => {
       if (docSnap.exists()) {
         setConfig(docSnap.data() as UserConfig);
       } else {
-        // Init default config if not exists
         await setDoc(configRef, {
           title: "Lesson Display",
           activeMonth: "September",
@@ -149,23 +135,15 @@ export default function App() {
       }
     });
 
-    const cardsRef = collection(db, "users", user.uid, "cards");
+    const cardsRef = collection(db, "lesson_profiles", syncKey, "cards");
     const unsubCards = onSnapshot(cardsRef, async (snap) => {
       const data = snap.docs.map(d => d.data() as LessonCard);
       setCards(data);
 
-      // Seed if the main initial card is missing
-      // This ensures themes appear for new users even if they accidentally created a "New topic" first
-      if (!data.some(c => c.id === "c1")) {
+      if (snap.empty) {
         for (const card of INITIAL_CARDS) {
-          const cardRef = doc(db, "users", user.uid, "cards", card.id);
-          const existingSnap = await getDoc(cardRef);
-          if (!existingSnap.exists()) {
-            await setDoc(cardRef, { 
-              ...card, 
-              updatedAt: serverTimestamp() 
-            });
-          }
+          const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
+          await setDoc(cardRef, { ...card, updatedAt: serverTimestamp() });
         }
       }
     });
@@ -174,29 +152,26 @@ export default function App() {
       unsubConfig();
       unsubCards();
     };
-  }, [user]);
+  }, [syncKey]);
 
   // Actions
   const updateConfig = async (newConfig: Partial<UserConfig>) => {
-    if (!user) return;
-    const configRef = doc(db, "users", user.uid, "config", "main");
+    if (!syncKey) return;
+    const configRef = doc(db, "lesson_profiles", syncKey, "config", "main");
     await setDoc(configRef, { ...config, ...newConfig }, { merge: true });
   };
 
   const saveCard = async (card: LessonCard) => {
-    if (!user) return;
-    const cardRef = doc(db, "users", user.uid, "cards", card.id);
-    await setDoc(cardRef, { 
-      ...card, 
-      updatedAt: serverTimestamp() 
-    });
+    if (!syncKey) return;
+    const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
+    await setDoc(cardRef, { ...card, updatedAt: serverTimestamp() });
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 2000);
   };
 
   const deleteCard = async () => {
-    if (!user || !idToDelete) return;
-    const cardRef = doc(db, "users", user.uid, "cards", idToDelete);
+    if (!syncKey || !idToDelete) return;
+    const cardRef = doc(db, "lesson_profiles", syncKey, "cards", idToDelete);
     await deleteDoc(cardRef);
     setModalType(null);
     setIdToDelete(null);
@@ -208,7 +183,7 @@ export default function App() {
   };
 
   const addCard = async () => {
-    if (!user) return;
+    if (!syncKey) return;
     const id = "c" + Date.now();
     const newCard: LessonCard = {
       id,
@@ -220,13 +195,13 @@ export default function App() {
       notes: "",
       month: config.activeMonth,
     };
-    const cardRef = doc(db, "users", user.uid, "cards", id);
+    const cardRef = doc(db, "lesson_profiles", syncKey, "cards", id);
     await setDoc(cardRef, { ...newCard, updatedAt: serverTimestamp() });
     setCurrentCardId(id);
   };
 
   const duplicateToMonth = async () => {
-    if (!user || !activeCard || !targetMonth) return;
+    if (!syncKey || !activeCard || !targetMonth) return;
     const newId = "c" + Date.now();
     const newCard: LessonCard = {
       ...activeCard,
@@ -234,7 +209,7 @@ export default function App() {
       month: targetMonth,
       updatedAt: serverTimestamp()
     };
-    const cardRef = doc(db, "users", user.uid, "cards", newId);
+    const cardRef = doc(db, "lesson_profiles", syncKey, "cards", newId);
     await setDoc(cardRef, newCard);
     setModalType(null);
     setTargetMonth("");
@@ -253,21 +228,19 @@ export default function App() {
   };
 
   const handleImport = async () => {
-    if (!user) return;
+    if (!syncKey) return;
     try {
       const data = JSON.parse(importText);
-      // Migration logic if needed, but for now just raw import
       await updateConfig({
         title: data.title || "Lesson Display",
         months: data.months || DEFAULT_MONTHS,
         activeMonth: data.activeMonth || "September",
       });
 
-      // Import cards
       if (data.cards) {
         for (const month in data.cards) {
           for (const card of data.cards[month]) {
-            const cardRef = doc(db, "users", user.uid, "cards", card.id || ("c" + Math.random()));
+            const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id || ("c" + Math.random()));
             await setDoc(cardRef, { ...card, month, updatedAt: serverTimestamp() });
           }
         }
@@ -279,34 +252,37 @@ export default function App() {
     }
   };
 
+  const setupSyncKey = (key: string) => {
+    if (!key.trim()) return;
+    setSyncKey(key.trim());
+    setModalType(null);
+  };
+
   const currentMonthCards = cards.filter(c => c.month === config.activeMonth);
   const activeCard = cards.find(c => c.id === currentCardId);
 
-  if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
-
-  if (!user) {
+  if (!syncKey) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center bg-[#f5f3ef]">
+      <div className="flex h-screen flex-col items-center justify-center bg-[#f5f3ef] p-6">
         <div className="bg-white p-12 rounded-3xl shadow-xl flex flex-col items-center gap-6 max-w-sm w-full">
-          <div className="text-4xl">📚</div>
+          <div className="text-4xl">🖇️</div>
           <h1 className="text-2xl font-bold font-sans text-[#1a1744]">Lesson Display</h1>
-          <p className="text-center text-gray-500 text-sm">Sign in to sync your lessons across all your devices.</p>
+          <p className="text-center text-gray-500 text-sm">To sync across all your devices, enter a unique Sync Code below.</p>
           <div className="flex flex-col gap-3 w-full">
+            <input 
+              className="w-full p-3 border rounded-xl outline-none focus:border-[#534AB7]"
+              placeholder="e.g. MyClass-2024"
+              value={newSyncKey}
+              onChange={(e) => setNewSyncKey(e.target.value)}
+            />
             <button 
-              onClick={async () => {
-                try {
-                  await signIn();
-                } catch (error) {
-                  console.error("Sign in failed:", error);
-                  alert("Sign in pop-up was blocked. Please check your browser's address bar for a blocked window icon and allow pop-ups for this site.");
-                }
-              }}
-              className="flex items-center justify-center gap-3 bg-[#534AB7] text-white px-8 py-3 rounded-xl font-semibold hover:bg-[#3C3489] transition-all cursor-pointer w-full"
+              onClick={() => setupSyncKey(newSyncKey || "Class-" + Math.floor(Math.random()*10000))}
+              className="flex items-center justify-center gap-2 bg-[#534AB7] text-white px-8 py-3 rounded-xl font-semibold hover:bg-[#3C3489] transition-all cursor-pointer w-full"
             >
-              <LogIn size={20} />
-              Sign in with Google
+              <RefreshCw size={18} />
+              Start Syncing
             </button>
-            <p className="text-[10px] text-center text-gray-400">If nothing happens, please allow pop-ups for this URL in your browser.</p>
+            <p className="text-[10px] text-center text-gray-400">Use this same code on your phone or laptop to see your lessons.</p>
           </div>
         </div>
       </div>
@@ -330,6 +306,9 @@ export default function App() {
           title="Click to rename"
         />
         <div className="nav-actions">
+          <button className="nav-btn p-2" onClick={() => setModalType("sync")} title="Sync Settings">
+            <Key size={18} />
+          </button>
           <button className="nav-btn p-2" onClick={() => setModalType("export")} title="Export data">
             <Download size={18} />
           </button>
@@ -338,9 +317,6 @@ export default function App() {
           </button>
           <button className="nav-btn primary flex items-center gap-1" onClick={() => setModalType("month")}>
             <Plus size={16} /> Month
-          </button>
-          <button className="nav-btn p-2 opacity-50 hover:opacity-100" onClick={logout} title="Sign out">
-            <LogOut size={18} />
           </button>
         </div>
       </nav>
@@ -634,6 +610,33 @@ export default function App() {
             <div className="modal-btns">
               <button className="cancel" onClick={() => setModalType(null)}>Cancel</button>
               <button className="confirm" onClick={duplicateToMonth}>Duplicate</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalType === "sync" && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h3>Sync Settings</h3>
+            <p className="text-sm text-gray-500 mb-4">Your current Sync Code is:</p>
+            <div className="bg-gray-100 p-3 rounded-lg font-mono text-center mb-6 select-all">
+              {syncKey}
+            </div>
+            <p className="text-xs text-gray-400 mb-6 text-center">To see these lessons on another device, just enter this code there.</p>
+            <div className="modal-btns">
+              <button className="cancel" onClick={() => setModalType(null)}>Close</button>
+              <button 
+                className="confirm !bg-red-600" 
+                onClick={() => {
+                  if(confirm("This will disconnect this device. You will need to enter your code again to see your data. Continue?")) {
+                    localStorage.removeItem(SYNC_KEY_LS);
+                    window.location.reload();
+                  }
+                }}
+              >
+                Disconnect
+              </button>
             </div>
           </div>
         </div>
