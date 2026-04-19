@@ -50,12 +50,14 @@ service cloud.firestore {
     match /lesson_profiles/{syncKey} {
       match /config/{docId} {
         allow read: if isValidSyncKey(syncKey);
-        allow write: if isValidSyncKey(syncKey) && isValidUserConfig(incoming());
+        allow create, update: if isValidSyncKey(syncKey) && isValidUserConfig(incoming());
+        allow delete: if isValidSyncKey(syncKey);
       }
       
       match /cards/{cardId} {
         allow read: if isValidSyncKey(syncKey);
-        allow write: if isValidSyncKey(syncKey) && isValidLessonCard(incoming());
+        allow create, update: if isValidSyncKey(syncKey) && isValidLessonCard(incoming());
+        allow delete: if isValidSyncKey(syncKey);
       }
     }
   }
