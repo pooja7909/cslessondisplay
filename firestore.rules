@@ -30,16 +30,18 @@ service cloud.firestore {
     }
 
     function isValidLessonCard(data) {
-      return data.keys().hasAll(['id', 'icon', 'year', 'title', 'color', 'facts', 'month', 'notes', 'updatedAt', 'date', 'order', 'objectives'])
+      return data.keys().hasAll(['id', 'icon', 'year', 'section', 'title', 'color', 'facts', 'month', 'notes', 'updatedAt', 'date', 'time', 'order', 'objectives'])
           && data.id is string && data.id.size() <= 100
           && data.icon is string && data.icon.size() <= 10
           && data.year is string && data.year.size() <= 100
+          && data.section is string && data.section.size() <= 50
           && data.title is string && data.title.size() <= 200
           && data.color is string && data.color.size() <= 20
           && data.facts is list && data.facts.size() <= 50
           && data.objectives is list && data.objectives.size() <= 50
           && data.month is string && data.month.size() <= 50
           && data.date is string && data.date.size() <= 10
+          && data.time is string && data.time.size() <= 20
           && data.notes is string && data.notes.size() <= 5000
           && data.order is number;
     }
