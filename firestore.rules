@@ -8,16 +8,8 @@ service cloud.firestore {
     }
 
     // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function isValidSyncKey(key) {
+      return key is string && key.size() >= 4 && key.size() <= 100 && key.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -46,28 +38,20 @@ service cloud.firestore {
           && data.color is string && data.color.size() <= 20
           && data.facts is list && data.facts.size() <= 50
           && data.month is string && data.month.size() <= 50
-          && data.notes is string && data.notes.size() <= 5000
-          && data.updatedAt == request.time;
+          && data.notes is string && data.notes.size() <= 5000;
     }
 
-    // Rules for User Config
-    match /users/{userId}/config/{docId} {
-      allow read: if isOwner(userId);
-      allow create, update: if isOwner(userId) && isValidUserConfig(incoming());
-      allow delete: if isOwner(userId);
-    }
-
-    // Rules for Lesson Cards
-    match /users/{userId}/cards/{cardId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidLessonCard(incoming()) && isValidId(cardId);
-      allow update: if isOwner(userId) && isValidLessonCard(incoming()) 
-          && incoming().id == existing().id // Immutable ID
-          && (
-            // Action: Edit
-            incoming().diff(existing()).affectedKeys().hasAny(['icon', 'year', 'title', 'color', 'facts', 'month', 'notes', 'updatedAt'])
-          );
-      allow delete: if isOwner(userId);
+    // Rules for Synced Profiles
+    match /lesson_profiles/{syncKey} {
+      match /config/{docId} {
+        allow read: if isValidSyncKey(syncKey);
+        allow write: if isValidSyncKey(syncKey) && isValidUserConfig(incoming());
+      }
+      
+      match /cards/{cardId} {
+        allow read: if isValidSyncKey(syncKey);
+        allow write: if isValidSyncKey(syncKey) && isValidLessonCard(incoming());
+      }
     }
   }
 }
