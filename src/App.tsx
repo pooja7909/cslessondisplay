@@ -464,6 +464,12 @@ export default function App() {
     .sort((a, b) => a.order - b.order);
   const activeCard = cards.find(c => c.id === currentCardId);
 
+  const formatTimestamp = (ts: any) => {
+    if (!ts) return "";
+    const date = ts.toDate ? ts.toDate() : new Date(ts);
+    return format(date, "MMM d, h:mm a");
+  };
+
   if (!syncKey) {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-[#f5f3ef] p-6">
@@ -674,7 +680,14 @@ export default function App() {
                       <span className="thumb-icon">{c.icon}</span>
                       <div className="thumb-year">{c.year}</div>
                       <div className="thumb-title">{c.title}</div>
-                      <div className="thumb-facts-count">{c.facts.length} point{c.facts.length !== 1 ? "s" : ""}</div>
+                      <div className="flex items-center justify-between mt-auto pt-2">
+                        <div className="thumb-facts-count">{c.facts.length} point{c.facts.length !== 1 ? "s" : ""}</div>
+                        {c.updatedAt && (
+                          <div className="text-[9px] opacity-40 font-medium">
+                            {formatTimestamp(c.updatedAt)}
+                          </div>
+                        )}
+                      </div>
                       <button 
                         className="del-card-btn flex items-center justify-center !p-1.5" 
                         onClick={(e) => { e.stopPropagation(); confirmDelete(c.id); }}
@@ -745,6 +758,11 @@ export default function App() {
                   />
                 </div>
                 <div className="text-[#1a1744]/40">Scheduled for {activeCard.month}</div>
+                {activeCard.updatedAt && (
+                  <div className="ml-auto text-[10px] opacity-40 font-medium text-[#1a1744]">
+                    Last saved: {formatTimestamp(activeCard.updatedAt)}
+                  </div>
+                )}
               </div>
 
               <div className="save-row">
