@@ -291,13 +291,23 @@ export default function App() {
           <div className="text-4xl">📚</div>
           <h1 className="text-2xl font-bold font-sans text-[#1a1744]">Lesson Display</h1>
           <p className="text-center text-gray-500 text-sm">Sign in to sync your lessons across all your devices.</p>
-          <button 
-            onClick={signIn}
-            className="flex items-center gap-3 bg-[#534AB7] text-white px-8 py-3 rounded-xl font-semibold hover:bg-[#3C3489] transition-all cursor-pointer"
-          >
-            <LogIn size={20} />
-            Sign in with Google
-          </button>
+          <div className="flex flex-col gap-3 w-full">
+            <button 
+              onClick={async () => {
+                try {
+                  await signIn();
+                } catch (error) {
+                  console.error("Sign in failed:", error);
+                  alert("Sign in pop-up was blocked. Please check your browser's address bar for a blocked window icon and allow pop-ups for this site.");
+                }
+              }}
+              className="flex items-center justify-center gap-3 bg-[#534AB7] text-white px-8 py-3 rounded-xl font-semibold hover:bg-[#3C3489] transition-all cursor-pointer w-full"
+            >
+              <LogIn size={20} />
+              Sign in with Google
+            </button>
+            <p className="text-[10px] text-center text-gray-400">If nothing happens, please allow pop-ups for this URL in your browser.</p>
+          </div>
         </div>
       </div>
     );
