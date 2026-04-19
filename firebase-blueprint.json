@@ -19,6 +19,7 @@
         "id": { "type": "string" },
         "icon": { "type": "string" },
         "year": { "type": "string" },
+        "section": { "type": "string", "description": "Year group section (e.g. A, B, CS)" },
         "title": { "type": "string" },
         "color": { "type": "string" },
         "facts": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "text": { "type": "string" } } } },
@@ -26,10 +27,11 @@
         "notes": { "type": "string" },
         "month": { "type": "string" },
         "date": { "type": "string", "description": "Scheduled date for the lesson (YYYY-MM-DD)" },
+        "time": { "type": "string", "description": "Scheduled time for the lesson (HH:mm)" },
         "order": { "type": "number" },
         "updatedAt": { "type": "object" }
       },
-      "required": ["id", "icon", "year", "title", "color", "facts", "objectives", "month", "date"]
+      "required": ["id", "icon", "year", "section", "title", "color", "facts", "objectives", "month", "date", "time"]
     }
   },
   "firestore": {
