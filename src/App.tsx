@@ -893,9 +893,9 @@ export default function App() {
                 <button 
                   className="nav-btn !bg-white !text-[#1a1744] border !border-gray-200 flex items-center gap-1"
                   onClick={duplicateCard}
-                  title="Duplicate card in current month"
+                  title="Clone this lesson for another section"
                 >
-                  <Copy size={14} /> Duplicate
+                  <Copy size={14} /> Duplicate for Section
                 </button>
                 <button 
                   className="nav-btn !bg-white !text-[#1a1744] border !border-gray-200 flex items-center gap-1"
@@ -903,8 +903,9 @@ export default function App() {
                     setTargetMonth(config.activeMonth);
                     setModalType("copy");
                   }}
+                  title="Copy lesson plan to another month"
                 >
-                  <RefreshCw size={14} /> Copy to Month...
+                  <RefreshCw size={14} /> Copy to Another Month...
                 </button>
                 <div className="color-picker">
                   {COLORS.map((col, i) => (
