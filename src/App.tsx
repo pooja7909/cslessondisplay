@@ -12,7 +12,21 @@ import {
   getDoc
 } from "firebase/firestore";
 import { db } from "./lib/firebase";
-import { Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy, RefreshCw, Key } from "lucide-react";
+import { Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy, RefreshCw, Key, Calendar as CalendarIcon, LayoutList, ChevronRight } from "lucide-react";
+import { 
+  format, 
+  startOfMonth, 
+  endOfMonth, 
+  startOfWeek, 
+  endOfWeek, 
+  eachDayOfInterval, 
+  isSameMonth, 
+  isSameDay, 
+  addMonths, 
+  subMonths,
+  parseISO,
+  isToday
+} from "date-fns";
 
 // Constants
 const COLORS = ["col0", "col1", "col2", "col3", "col4", "col5", "col6", "col7"];
@@ -33,7 +47,24 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       "Files render live in a browser — no compilation needed"
     ],
     notes: "",
-    month: "September"
+    month: "September",
+    date: "2026-09-07"
+  },
+  {
+    id: "c1_2",
+    icon: "🛡️",
+    year: "Year 8",
+    title: "e-Safety & Privacy",
+    color: "col7",
+    facts: [
+      "Understanding digital footprints and long-term consequences",
+      "Recognizing phishing, social engineering, and online risks",
+      "Strong passwords and multi-factor authentication (MFA)",
+      "Privacy settings and data harvesting by major platforms"
+    ],
+    notes: "",
+    month: "September",
+    date: "2026-09-10"
   },
   {
     id: "c2",
@@ -48,7 +79,24 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       "Decomposition — break the challenge into smaller moves"
     ],
     notes: "",
-    month: "September"
+    month: "September",
+    date: "2026-09-14"
+  },
+  {
+    id: "c2_2",
+    icon: "🔢",
+    year: "Year 9",
+    title: "Data Representation",
+    color: "col4",
+    facts: [
+      "Binary (Base-2) and Hexadecimal (Base-16) systems",
+      "How text (ASCII/Unicode) and images are stored as bits",
+      "Conversion between binary, denary, and hexadecimal",
+      "Logic gates (AND, OR, NOT) and truth tables"
+    ],
+    notes: "",
+    month: "September",
+    date: "2026-09-17"
   },
   {
     id: "c3",
@@ -63,13 +111,30 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       "Scope — variables inside a function are local by default"
     ],
     notes: "",
-    month: "September"
+    month: "September",
+    date: "2026-09-21"
+  },
+  {
+    id: "c3_2",
+    icon: "🧠",
+    year: "Year 10",
+    title: "Algorithms & Search",
+    color: "col6",
+    facts: [
+      "Linear search vs Binary search for efficiency",
+      "Bubble sort and Merge sort processes",
+      "Flowcharts and Pseudocode for designing logic",
+      "Computational Thinking: Abstraction and Pattern Recognition"
+    ],
+    notes: "",
+    month: "September",
+    date: "2026-09-24"
   },
   {
     id: "c4",
     icon: "🗄️",
     year: "Year 12",
-    title: "SQL",
+    title: "Relational SQL",
     color: "col3",
     facts: [
       "Structured Query Language for relational databases",
@@ -78,7 +143,24 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       "DDL (CREATE/ALTER) vs DML (INSERT/UPDATE/DELETE)"
     ],
     notes: "",
-    month: "September"
+    month: "September",
+    date: "2026-09-28"
+  },
+  {
+    id: "c4_2",
+    icon: "🚀",
+    year: "Year 12",
+    title: "Computational Complexity",
+    color: "col5",
+    facts: [
+      "Big O notation — measuring algorithm performance",
+      "Time complexity (O(1), O(n), O(n²), O(log n))",
+      "Space complexity — memory usage across data structures",
+      "Comparing iterative vs recursive approach efficiencies"
+    ],
+    notes: "",
+    month: "September",
+    date: "2026-09-30"
   }
 ];
 
@@ -91,6 +173,7 @@ interface LessonCard {
   facts: string[];
   notes: string;
   month: string;
+  date: string;
   updatedAt?: any;
 }
 
@@ -109,6 +192,7 @@ export default function App() {
   });
   const [cards, setCards] = useState<LessonCard[]>([]);
   const [currentCardId, setCurrentCardId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [modalType, setModalType] = useState<"month" | "export" | "import" | "delete" | "copy" | "sync" | null>(null);
   const [tempMonth, setTempMonth] = useState("");
   const [importText, setImportText] = useState("");
@@ -116,6 +200,25 @@ export default function App() {
   const [targetMonth, setTargetMonth] = useState("");
   const [newSyncKey, setNewSyncKey] = useState("");
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [yearFilter, setYearFilter] = useState<string>("All Years");
+
+  const yearGroups = ["All Years", ...Array.from(new Set(cards.map(c => c.year))).sort()];
+
+  // Auto-focus calendar on first lesson if current month is empty
+  useEffect(() => {
+    if (viewMode === "calendar" && cards.length > 0) {
+      const currentMonthLessons = cards.filter(c => isSameMonth(parseISO(c.date), calendarDate));
+      if (currentMonthLessons.length === 0) {
+        // Find the earliest lesson
+        const sortedLessons = [...cards].sort((a, b) => a.date.localeCompare(b.date));
+        const firstLessonDate = parseISO(sortedLessons[0].date);
+        if (!isSameMonth(firstLessonDate, calendarDate)) {
+          setCalendarDate(firstLessonDate);
+        }
+      }
+    }
+  }, [viewMode, cards]);
 
   // Sync logic
   useEffect(() => {
@@ -137,11 +240,26 @@ export default function App() {
 
     const cardsRef = collection(db, "lesson_profiles", syncKey, "cards");
     const unsubCards = onSnapshot(cardsRef, async (snap) => {
-      const data = snap.docs.map(d => d.data() as LessonCard);
+      const data = snap.docs.map(d => {
+        const docData = d.data() as LessonCard;
+        // Migration/Sanitization: Ensure mandatory fields exist for UI
+        return {
+          ...docData,
+          date: docData.date || format(new Date(), 'yyyy-MM-dd'),
+          notes: docData.notes || ""
+        };
+      });
       setCards(data);
 
-      if (snap.empty) {
-        for (const card of INITIAL_CARDS) {
+      // If the collection is strictly empty OR missing core system IDs, seed them
+      // This helps users who lost data or have a partial sync
+      const existingIds = snap.docs.map(d => d.id);
+      const missingDefaults = INITIAL_CARDS.filter(c => !existingIds.includes(c.id));
+      
+      // Seed missing defaults automatically - users can still delete them later if they want
+      // But this ensures they get the full set of Year 8, 9, 10, and 12 on first sync
+      if (missingDefaults.length > 0 && existingIds.length < INITIAL_CARDS.length) {
+        for (const card of missingDefaults) {
           const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
           await setDoc(cardRef, { ...card, updatedAt: serverTimestamp() });
         }
@@ -194,6 +312,7 @@ export default function App() {
       facts: ["Add a key point here"],
       notes: "",
       month: config.activeMonth,
+      date: format(new Date(), 'yyyy-MM-dd')
     };
     const cardRef = doc(db, "lesson_profiles", syncKey, "cards", id);
     await setDoc(cardRef, { ...newCard, updatedAt: serverTimestamp() });
@@ -202,18 +321,25 @@ export default function App() {
 
   const duplicateToMonth = async () => {
     if (!syncKey || !activeCard || !targetMonth) return;
-    const newId = "c" + Date.now();
-    const newCard: LessonCard = {
-      ...activeCard,
-      id: newId,
-      month: targetMonth,
-      updatedAt: serverTimestamp()
-    };
-    const cardRef = doc(db, "lesson_profiles", syncKey, "cards", newId);
-    await setDoc(cardRef, newCard);
-    setModalType(null);
-    setTargetMonth("");
-    alert(`Card copied to ${targetMonth}`);
+    try {
+      const newId = "c" + Date.now();
+      const newCard: LessonCard = {
+        ...activeCard,
+        id: newId,
+        month: targetMonth,
+        date: activeCard.date || format(new Date(), 'yyyy-MM-dd'),
+        notes: activeCard.notes || "",
+        updatedAt: serverTimestamp()
+      };
+      const cardRef = doc(db, "lesson_profiles", syncKey, "cards", newId);
+      await setDoc(cardRef, newCard);
+      setModalType(null);
+      setTargetMonth("");
+      alert(`Card copied to ${targetMonth}`);
+    } catch (error) {
+      console.error("Duplicate failed:", error);
+      alert("Failed to duplicate card. Please check your connection.");
+    }
   };
 
   const addMonth = async () => {
@@ -241,7 +367,13 @@ export default function App() {
         for (const month in data.cards) {
           for (const card of data.cards[month]) {
             const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id || ("c" + Math.random()));
-            await setDoc(cardRef, { ...card, month, updatedAt: serverTimestamp() });
+            await setDoc(cardRef, { 
+              ...card, 
+              month, 
+              date: card.date || format(new Date(), 'yyyy-MM-dd'),
+              notes: card.notes || "",
+              updatedAt: serverTimestamp() 
+            });
           }
         }
       }
@@ -258,7 +390,11 @@ export default function App() {
     setModalType(null);
   };
 
-  const currentMonthCards = cards.filter(c => c.month === config.activeMonth);
+  const currentMonthCards = cards.filter(c => {
+    const monthMatch = c.month === config.activeMonth;
+    const yearMatch = yearFilter === "All Years" || c.year === yearFilter;
+    return monthMatch && yearMatch;
+  });
   const activeCard = cards.find(c => c.id === currentCardId);
 
   if (!syncKey) {
@@ -289,6 +425,72 @@ export default function App() {
     );
   }
 
+  const CalendarView = () => {
+    const monthStart = startOfMonth(calendarDate);
+    const monthEnd = endOfMonth(monthStart);
+    const startDate = startOfWeek(monthStart);
+    const endDate = endOfWeek(monthEnd);
+    const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
+
+    const lessonsByDate = cards.reduce((acc, card) => {
+      if (!acc[card.date]) acc[card.date] = [];
+      acc[card.date].push(card);
+      return acc;
+    }, {} as Record<string, LessonCard[]>);
+
+    return (
+      <div className="bg-white rounded-[24px] shadow-sm overflow-hidden border border-gray-100">
+        <div className="flex items-center justify-between p-6 border-bottom border-gray-100">
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold text-[#1a1744]">{format(calendarDate, 'MMMM yyyy')}</h2>
+            <div className="flex gap-1">
+              <button onClick={() => setCalendarDate(subMonths(calendarDate, 1))} className="p-1 hover:bg-gray-100 rounded"><ChevronLeft size={20} /></button>
+              <button onClick={() => setCalendarDate(addMonths(calendarDate, 1))} className="p-1 hover:bg-gray-100 rounded"><ChevronRight size={20} /></button>
+            </div>
+          </div>
+          <button onClick={() => setCalendarDate(new Date())} className="text-sm font-medium text-[#534AB7] hover:underline">Today</button>
+        </div>
+        
+        <div className="grid grid-cols-7 gap-px bg-gray-100">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+            <div key={d} className="bg-gray-50 p-2 text-center text-[10px] font-bold uppercase tracking-wider text-gray-400">
+              {d}
+            </div>
+          ))}
+          {calendarDays.map((day, i) => {
+            const dateStr = format(day, 'yyyy-MM-dd');
+            const dayLessons = lessonsByDate[dateStr] || [];
+            const isCurrentMonth = isSameMonth(day, monthStart);
+            
+            return (
+              <div 
+                key={i} 
+                className={`min-h-[100px] bg-white p-2 transition-colors ${!isCurrentMonth ? 'bg-gray-50/50' : ''}`}
+              >
+                <div className={`text-[11px] font-medium mb-1 ${isToday(day) ? 'bg-[#534AB7] text-white w-5 h-5 flex items-center justify-center rounded-full' : 'text-gray-400'}`}>
+                  {format(day, 'd')}
+                </div>
+                <div className="flex flex-col gap-1">
+                  {dayLessons.map(lesson => (
+                    <div 
+                      key={lesson.id} 
+                      onClick={() => setCurrentCardId(lesson.id)}
+                      className={`text-[9px] p-1.5 rounded-lg border-l-2 cursor-pointer truncate ${lesson.color} shadow-sm hover:brightness-95`}
+                      title={lesson.title}
+                    >
+                      <span className="mr-1">{lesson.icon}</span>
+                      <span className="font-bold">{lesson.year}</span>: {lesson.title}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#f5f3ef]">
       {/* TOP NAV */}
@@ -306,6 +508,13 @@ export default function App() {
           title="Click to rename"
         />
         <div className="nav-actions">
+          <button 
+            className="nav-btn p-2" 
+            onClick={() => setViewMode(viewMode === "list" ? "calendar" : "list")}
+            title={viewMode === "list" ? "Calendar View" : "List View"}
+          >
+            {viewMode === "list" ? <CalendarIcon size={18} /> : <LayoutList size={18} />}
+          </button>
           <button className="nav-btn p-2" onClick={() => setModalType("sync")} title="Sync Settings">
             <Key size={18} />
           </button>
@@ -347,13 +556,34 @@ export default function App() {
               className="home-body"
             >
               <div className="home-header mb-6">
-                <h2 className="home-month-title">{config.activeMonth}</h2>
+                <div className="flex flex-col gap-1">
+                  <h2 className="home-month-title">{viewMode === "list" ? config.activeMonth : "Academic Calendar"}</h2>
+                  {viewMode === "list" && (
+                    <div className="flex gap-2 overflow-x-auto pb-2 -mb-2 no-scrollbar">
+                      {yearGroups.map(y => (
+                        <button 
+                          key={y}
+                          onClick={() => setYearFilter(y)}
+                          className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-all border ${
+                            yearFilter === y 
+                            ? 'bg-[#1a1744] text-white border-[#1a1744]' 
+                            : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          {y}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button className="add-class-btn" onClick={addCard}>
                   + Add class
                 </button>
               </div>
               
-              {currentMonthCards.length === 0 ? (
+              {viewMode === "calendar" ? (
+                <CalendarView />
+              ) : currentMonthCards.length === 0 ? (
                 <div className="empty-state">
                   <span className="empty-icon">📋</span>
                   No classes yet for {config.activeMonth}<br /><br />
@@ -420,6 +650,22 @@ export default function App() {
                   }}
                   placeholder="Topic title" 
                 />
+              </div>
+
+              <div className="flex items-center gap-4 mb-6 text-sm">
+                <div className="flex items-center gap-2 bg-white/50 px-3 py-1.5 rounded-lg border border-white/20">
+                  <CalendarIcon size={14} className="text-[#1a1744]/60" />
+                  <input 
+                    type="date"
+                    className="bg-transparent border-none outline-none font-medium text-[#1a1744]"
+                    value={activeCard.date}
+                    onChange={(e) => {
+                      const newCards = cards.map(x => x.id === activeCard.id ? { ...x, date: e.target.value } : x);
+                      setCards(newCards);
+                    }}
+                  />
+                </div>
+                <div className="text-[#1a1744]/40">Scheduled for {activeCard.month}</div>
               </div>
 
               <div className="save-row">
@@ -624,6 +870,23 @@ export default function App() {
               {syncKey}
             </div>
             <p className="text-xs text-gray-400 mb-6 text-center">To see these lessons on another device, just enter this code there.</p>
+            <div className="flex flex-col gap-2 mb-6">
+              <button 
+                className="nav-btn !bg-gray-100 !text-gray-600 !border !border-gray-200"
+                onClick={async () => {
+                  if (confirm("Restore the default year 8, 9, 10 and 12 lessons? This won't delete your custom cards.")) {
+                    for (const card of INITIAL_CARDS) {
+                      const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
+                      await setDoc(cardRef, { ...card, updatedAt: serverTimestamp() });
+                    }
+                    alert("Default lessons restored!");
+                    setModalType(null);
+                  }
+                }}
+              >
+                Restore Default Lessons
+              </button>
+            </div>
             <div className="modal-btns">
               <button className="cancel" onClick={() => setModalType(null)}>Close</button>
               <button 
