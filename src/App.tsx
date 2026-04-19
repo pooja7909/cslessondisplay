@@ -359,6 +359,9 @@ export default function App() {
     if (!syncKey || !idToDelete) return;
     const cardRef = doc(db, "lesson_profiles", syncKey, "cards", idToDelete);
     await deleteDoc(cardRef);
+    if (idToDelete === currentCardId) {
+      setCurrentCardId(null);
+    }
     setModalType(null);
     setIdToDelete(null);
   };
@@ -412,6 +415,42 @@ export default function App() {
       batch.update(cardRef, { order: index, updatedAt: serverTimestamp() });
     });
     await batch.commit();
+  };
+
+  const duplicateCard = async () => {
+    if (!syncKey || !activeCard) return;
+    try {
+      const newId = "c" + Date.now();
+      const duplicatedFacts = activeCard.facts.map(f => createFact(f.text));
+      const duplicatedObjectives = activeCard.objectives.map(o => createFact(o.text));
+      
+      const targetMonthCards = cards.filter(c => c.month === activeCard.month);
+      const lastCard = [...targetMonthCards].sort((a,b) => b.order - a.order)[0];
+      const newOrder = lastCard ? lastCard.order + 1 : 0;
+
+      const newCard: LessonCard = {
+        ...activeCard,
+        id: newId,
+        facts: duplicatedFacts,
+        objectives: duplicatedObjectives,
+        order: newOrder,
+        updatedAt: serverTimestamp()
+      };
+      
+      const cardRef = doc(db, "lesson_profiles", syncKey, "cards", newId);
+      await setDoc(cardRef, newCard);
+      setCurrentCardId(newId); // Switch to the new card
+      setShowSavedToast(true);
+      setTimeout(() => setShowSavedToast(false), 2000);
+    } catch (error) {
+      console.error("Duplicate failed:", error);
+      alert("Failed to duplicate card.");
+    }
+  };
+
+  const deleteActiveCard = () => {
+    if (!activeCard) return;
+    confirmDelete(activeCard.id);
   };
 
   const duplicateToMonth = async () => {
@@ -853,12 +892,19 @@ export default function App() {
                 <button className="exp-save-btn" onClick={() => saveCard(activeCard)}>Save</button>
                 <button 
                   className="nav-btn !bg-white !text-[#1a1744] border !border-gray-200 flex items-center gap-1"
+                  onClick={duplicateCard}
+                  title="Duplicate card in current month"
+                >
+                  <Copy size={14} /> Duplicate
+                </button>
+                <button 
+                  className="nav-btn !bg-white !text-[#1a1744] border !border-gray-200 flex items-center gap-1"
                   onClick={() => {
                     setTargetMonth(config.activeMonth);
                     setModalType("copy");
                   }}
                 >
-                  <Copy size={14} /> Copy to...
+                  <RefreshCw size={14} /> Copy to Month...
                 </button>
                 <div className="color-picker">
                   {COLORS.map((col, i) => (
@@ -872,6 +918,12 @@ export default function App() {
                     />
                   ))}
                 </div>
+                <button 
+                  className="nav-btn !bg-white !text-red-500 border !border-red-100 flex items-center gap-1 ml-auto"
+                  onClick={deleteActiveCard}
+                >
+                  <Trash2 size={14} /> Delete
+                </button>
                 {showSavedToast && (
                   <span className="saved-toast" style={{ opacity: 1 }}>
                     <Check size={14} /> Saved
