@@ -53,6 +53,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       createFact("Separation of concerns — content vs. presentation"),
       createFact("Files render live in a browser — no compilation needed")
     ],
+    objectives: [],
     notes: "",
     month: "September",
     date: "2026-09-07"
@@ -70,6 +71,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       createFact("Strong passwords and multi-factor authentication (MFA)"),
       createFact("Privacy settings and data harvesting by major platforms")
     ],
+    objectives: [],
     notes: "",
     month: "September",
     date: "2026-09-10"
@@ -87,6 +89,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       createFact("Sensor inputs drive real-time decisions in the simulation"),
       createFact("Decomposition — break the challenge into smaller moves")
     ],
+    objectives: [],
     notes: "",
     month: "September",
     date: "2026-09-14"
@@ -104,6 +107,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       createFact("Conversion between binary, denary, and hexadecimal"),
       createFact("Logic gates (AND, OR, NOT) and truth tables")
     ],
+    objectives: [],
     notes: "",
     month: "September",
     date: "2026-09-17"
@@ -121,6 +125,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       createFact("Reduces repetition and makes programs easier to maintain"),
       createFact("Scope — variables inside a function are local by default")
     ],
+    objectives: [],
     notes: "",
     month: "September",
     date: "2026-09-21"
@@ -138,6 +143,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       createFact("Flowcharts and Pseudocode for designing logic"),
       createFact("Computational Thinking: Abstraction and Pattern Recognition")
     ],
+    objectives: [],
     notes: "",
     month: "September",
     date: "2026-09-24"
@@ -155,6 +161,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       createFact("JOINs combine data across multiple tables via keys"),
       createFact("DDL (CREATE/ALTER) vs DML (INSERT/UPDATE/DELETE)")
     ],
+    objectives: [],
     notes: "",
     month: "September",
     date: "2026-09-28"
@@ -172,6 +179,7 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
       createFact("Space complexity — memory usage across data structures"),
       createFact("Comparing iterative vs recursive approach efficiencies")
     ],
+    objectives: [],
     notes: "",
     month: "September",
     date: "2026-09-30"
@@ -190,6 +198,7 @@ interface LessonCard {
   title: string;
   color: string;
   facts: Fact[];
+  objectives: Fact[];
   notes: string;
   month: string;
   date: string;
@@ -266,10 +275,14 @@ export default function App() {
         const facts = (docData.facts || []).map((f: any) => 
           typeof f === 'string' ? createFact(f) : f
         );
+        const objectives = (docData.objectives || []).map((o: any) => 
+          typeof o === 'string' ? createFact(o) : o
+        );
 
         return {
           ...docData,
           facts,
+          objectives,
           date: docData.date || format(new Date(), 'yyyy-MM-dd'),
           notes: docData.notes || "",
           order: typeof docData.order === 'number' ? docData.order : 0
@@ -341,6 +354,7 @@ export default function App() {
       title: "New topic",
       color: COLORS[cards.length % COLORS.length],
       facts: [createFact("Add a key point here")],
+      objectives: [createFact("Add a learning objective here")],
       notes: "",
       month: config.activeMonth,
       date: format(new Date(), 'yyyy-MM-dd'),
@@ -374,6 +388,7 @@ export default function App() {
     try {
       const newId = "c" + Date.now();
       const duplicatedFacts = activeCard.facts.map(f => createFact(f.text));
+      const duplicatedObjectives = activeCard.objectives.map(o => createFact(o.text));
       
       // Get order for target month
       const targetCards = cards.filter(c => c.month === targetMonth);
@@ -384,6 +399,7 @@ export default function App() {
         ...activeCard,
         id: newId,
         facts: duplicatedFacts,
+        objectives: duplicatedObjectives,
         month: targetMonth,
         date: activeCard.date || format(new Date(), 'yyyy-MM-dd'),
         notes: activeCard.notes || "",
@@ -430,10 +446,14 @@ export default function App() {
             const facts = (card.facts || []).map((f: any) => 
               typeof f === 'string' ? createFact(f) : f
             );
+            const objectives = (card.objectives || []).map((o: any) => 
+              typeof o === 'string' ? createFact(o) : o
+            );
             await setDoc(cardRef, { 
               ...card, 
               month, 
               facts,
+              objectives,
               order: typeof card.order === 'number' ? card.order : 0,
               date: card.date || format(new Date(), 'yyyy-MM-dd'),
               notes: card.notes || "",
@@ -829,7 +849,7 @@ export default function App() {
                 ))}
               </Reorder.Group>
               <button 
-                className="add-point-btn" 
+                className="add-point-btn mb-8" 
                 onClick={() => {
                   const newFacts = [...activeCard.facts, createFact("")];
                   const newCards = cards.map(x => x.id === activeCard.id ? { ...x, facts: newFacts } : x);
@@ -837,6 +857,50 @@ export default function App() {
                 }}
               >
                 + Add key point
+              </button>
+
+              <div className="section-label">Lesson Objectives</div>
+              <Reorder.Group axis="y" values={activeCard.objectives} onReorder={(newObjs) => {
+                const newCards = cards.map(x => x.id === activeCard.id ? { ...x, objectives: newObjs } : x);
+                setCards(newCards);
+              }} className="facts-list">
+                {activeCard.objectives.map((o, i) => (
+                  <Reorder.Item key={o.id} value={o} className="fact-item">
+                    <div className="drag-handle">
+                      <GripVertical size={16} />
+                    </div>
+                    <input 
+                      className="fact-inp" 
+                      value={o.text} 
+                      onChange={(e) => {
+                        const newObjs = [...activeCard.objectives];
+                        newObjs[i] = { ...newObjs[i], text: e.target.value };
+                        const newCards = cards.map(x => x.id === activeCard.id ? { ...x, objectives: newObjs } : x);
+                        setCards(newCards);
+                      }}
+                    />
+                    <button 
+                      className="fdel" 
+                      onClick={() => {
+                        const newObjs = activeCard.objectives.filter((_, idx) => idx !== i);
+                        const newCards = cards.map(x => x.id === activeCard.id ? { ...x, objectives: newObjs } : x);
+                        setCards(newCards);
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </Reorder.Item>
+                ))}
+              </Reorder.Group>
+              <button 
+                className="add-point-btn" 
+                onClick={() => {
+                  const newObjs = [...activeCard.objectives, createFact("")];
+                  const newCards = cards.map(x => x.id === activeCard.id ? { ...x, objectives: newObjs } : x);
+                  setCards(newCards);
+                }}
+              >
+                + Add objective
               </button>
 
               <div className="notes-section mt-8">
