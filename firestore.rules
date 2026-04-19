@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Blueprints
+    function isValidUserConfig(data) {
+      return data.keys().hasAll(['title', 'activeMonth', 'months']) 
+          && data.keys().size() == 3
+          && data.title is string && data.title.size() <= 100
+          && data.activeMonth is string && data.activeMonth.size() <= 50
+          && data.months is list && data.months.size() <= 50;
+    }
+
+    function isValidLessonCard(data) {
+      return data.keys().hasAll(['id', 'icon', 'year', 'title', 'color', 'facts', 'month', 'notes', 'updatedAt'])
+          && data.id is string && data.id.size() <= 100
+          && data.icon is string && data.icon.size() <= 10
+          && data.year is string && data.year.size() <= 100
+          && data.title is string && data.title.size() <= 200
+          && data.color is string && data.color.size() <= 20
+          && data.facts is list && data.facts.size() <= 50
+          && data.month is string && data.month.size() <= 50
+          && data.notes is string && data.notes.size() <= 5000
+          && data.updatedAt == request.time;
+    }
+
+    // Rules for User Config
+    match /users/{userId}/config/{docId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidUserConfig(incoming());
+      allow delete: if isOwner(userId);
+    }
+
+    // Rules for Lesson Cards
+    match /users/{userId}/cards/{cardId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidLessonCard(incoming()) && isValidId(cardId);
+      allow update: if isOwner(userId) && isValidLessonCard(incoming()) 
+          && incoming().id == existing().id // Immutable ID
+          && (
+            // Action: Edit
+            incoming().diff(existing()).affectedKeys().hasAny(['icon', 'year', 'title', 'color', 'facts', 'month', 'notes', 'updatedAt'])
+          );
+      allow delete: if isOwner(userId);
+    }
+  }
+}

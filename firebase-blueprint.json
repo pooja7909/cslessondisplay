@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "UserConfig": {
+      "title": "User UI Configuration",
+      "description": "Global settings for the user's UI",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "activeMonth": { "type": "string" },
+        "months": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["title", "activeMonth", "months"]
+    },
+    "LessonCard": {
+      "title": "Lesson Card",
+      "description": "A single lesson topic card",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "icon": { "type": "string" },
+        "year": { "type": "string" },
+        "title": { "type": "string" },
+        "color": { "type": "string" },
+        "facts": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" },
+        "month": { "type": "string" },
+        "order": { "type": "number" },
+        "updatedAt": { "type": "object" }
+      },
+      "required": ["id", "icon", "year", "title", "color", "facts", "month"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/config": {
+      "schema": "UserConfig",
+      "description": "Stores user-specific global state like app title and month list"
+    },
+    "/users/{userId}/cards/{cardId}": {
+      "schema": "LessonCard",
+      "description": "Stores individual lesson cards for a user"
+    }
+  }
+}

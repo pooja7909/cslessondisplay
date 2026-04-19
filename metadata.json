@@ -1,0 +1,6 @@
+{
+  "name": "Lesson Display",
+  "description": "A cloud-synced lesson planning and display application for teachers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
