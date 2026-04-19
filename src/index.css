@@ -107,6 +107,9 @@ body {
 .mbtn:hover { color: #EEEDFE; }
 .mbtn.active { color: #EEEDFE; border-bottom-color: #7F77DD; }
 
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* ── HOME VIEW ── */
 .home-body { padding: 24px; max-width: 960px; margin: 0 auto; }
 .home-header {
