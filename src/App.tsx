@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, Reorder } from "motion/react";
 import { 
   collection, 
   doc, 
@@ -12,7 +12,7 @@ import {
   getDoc
 } from "firebase/firestore";
 import { db } from "./lib/firebase";
-import { Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy, RefreshCw, Key, Calendar as CalendarIcon, LayoutList, ChevronRight } from "lucide-react";
+import { Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy, RefreshCw, Key, Calendar as CalendarIcon, LayoutList, ChevronRight, GripVertical } from "lucide-react";
 import { 
   format, 
   startOfMonth, 
@@ -33,6 +33,11 @@ const COLORS = ["col0", "col1", "col2", "col3", "col4", "col5", "col6", "col7"];
 const DEFAULT_MONTHS = ["September", "October", "November"];
 const SYNC_KEY_LS = "lesson_app_sync_key";
 
+const createFact = (text: string): Fact => ({
+  id: Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
+  text
+});
+
 const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
   {
     id: "c1",
@@ -41,10 +46,10 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     title: "HTML & CSS",
     color: "col0",
     facts: [
-      "Markup (HTML) defines structure; CSS controls appearance",
-      "Tags, attributes, selectors, and the box model are core concepts",
-      "Separation of concerns — content vs. presentation",
-      "Files render live in a browser — no compilation needed"
+      createFact("Markup (HTML) defines structure; CSS controls appearance"),
+      createFact("Tags, attributes, selectors, and the box model are core concepts"),
+      createFact("Separation of concerns — content vs. presentation"),
+      createFact("Files render live in a browser — no compilation needed")
     ],
     notes: "",
     month: "September",
@@ -57,10 +62,10 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     title: "e-Safety & Privacy",
     color: "col7",
     facts: [
-      "Understanding digital footprints and long-term consequences",
-      "Recognizing phishing, social engineering, and online risks",
-      "Strong passwords and multi-factor authentication (MFA)",
-      "Privacy settings and data harvesting by major platforms"
+      createFact("Understanding digital footprints and long-term consequences"),
+      createFact("Recognizing phishing, social engineering, and online risks"),
+      createFact("Strong passwords and multi-factor authentication (MFA)"),
+      createFact("Privacy settings and data harvesting by major platforms")
     ],
     notes: "",
     month: "September",
@@ -73,10 +78,10 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     title: "VEX VR Robotics",
     color: "col1",
     facts: [
-      "Block-based or Python coding controls a virtual robot",
-      "Reinforces sequencing, loops, and conditional logic",
-      "Sensor inputs drive real-time decisions in the simulation",
-      "Decomposition — break the challenge into smaller moves"
+      createFact("Block-based or Python coding controls a virtual robot"),
+      createFact("Reinforces sequencing, loops, and conditional logic"),
+      createFact("Sensor inputs drive real-time decisions in the simulation"),
+      createFact("Decomposition — break the challenge into smaller moves")
     ],
     notes: "",
     month: "September",
@@ -89,10 +94,10 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     title: "Data Representation",
     color: "col4",
     facts: [
-      "Binary (Base-2) and Hexadecimal (Base-16) systems",
-      "How text (ASCII/Unicode) and images are stored as bits",
-      "Conversion between binary, denary, and hexadecimal",
-      "Logic gates (AND, OR, NOT) and truth tables"
+      createFact("Binary (Base-2) and Hexadecimal (Base-16) systems"),
+      createFact("How text (ASCII/Unicode) and images are stored as bits"),
+      createFact("Conversion between binary, denary, and hexadecimal"),
+      createFact("Logic gates (AND, OR, NOT) and truth tables")
     ],
     notes: "",
     month: "September",
@@ -105,10 +110,10 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     title: "Functions & Subprograms",
     color: "col2",
     facts: [
-      "A function is a named, reusable block of code",
-      "Parameters pass data in; return values pass results out",
-      "Reduces repetition and makes programs easier to maintain",
-      "Scope — variables inside a function are local by default"
+      createFact("A function is a named, reusable block of code"),
+      createFact("Parameters pass data in; return values pass results out"),
+      createFact("Reduces repetition and makes programs easier to maintain"),
+      createFact("Scope — variables inside a function are local by default")
     ],
     notes: "",
     month: "September",
@@ -121,10 +126,10 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     title: "Algorithms & Search",
     color: "col6",
     facts: [
-      "Linear search vs Binary search for efficiency",
-      "Bubble sort and Merge sort processes",
-      "Flowcharts and Pseudocode for designing logic",
-      "Computational Thinking: Abstraction and Pattern Recognition"
+      createFact("Linear search vs Binary search for efficiency"),
+      createFact("Bubble sort and Merge sort processes"),
+      createFact("Flowcharts and Pseudocode for designing logic"),
+      createFact("Computational Thinking: Abstraction and Pattern Recognition")
     ],
     notes: "",
     month: "September",
@@ -137,10 +142,10 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     title: "Relational SQL",
     color: "col3",
     facts: [
-      "Structured Query Language for relational databases",
-      "SELECT, WHERE, ORDER BY, GROUP BY are foundational clauses",
-      "JOINs combine data across multiple tables via keys",
-      "DDL (CREATE/ALTER) vs DML (INSERT/UPDATE/DELETE)"
+      createFact("Structured Query Language for relational databases"),
+      createFact("SELECT, WHERE, ORDER BY, GROUP BY are foundational clauses"),
+      createFact("JOINs combine data across multiple tables via keys"),
+      createFact("DDL (CREATE/ALTER) vs DML (INSERT/UPDATE/DELETE)")
     ],
     notes: "",
     month: "September",
@@ -153,10 +158,10 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     title: "Computational Complexity",
     color: "col5",
     facts: [
-      "Big O notation — measuring algorithm performance",
-      "Time complexity (O(1), O(n), O(n²), O(log n))",
-      "Space complexity — memory usage across data structures",
-      "Comparing iterative vs recursive approach efficiencies"
+      createFact("Big O notation — measuring algorithm performance"),
+      createFact("Time complexity (O(1), O(n), O(n²), O(log n))"),
+      createFact("Space complexity — memory usage across data structures"),
+      createFact("Comparing iterative vs recursive approach efficiencies")
     ],
     notes: "",
     month: "September",
@@ -164,13 +169,18 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
   }
 ];
 
+interface Fact {
+  id: string;
+  text: string;
+}
+
 interface LessonCard {
   id: string;
   icon: string;
   year: string;
   title: string;
   color: string;
-  facts: string[];
+  facts: Fact[];
   notes: string;
   month: string;
   date: string;
@@ -241,13 +251,19 @@ export default function App() {
     const cardsRef = collection(db, "lesson_profiles", syncKey, "cards");
     const unsubCards = onSnapshot(cardsRef, async (snap) => {
       const data = snap.docs.map(d => {
-        const docData = d.data() as LessonCard;
+        const docData = d.data();
         // Migration/Sanitization: Ensure mandatory fields exist for UI
+        // And migrate facts to object array if they are strings
+        const facts = (docData.facts || []).map((f: any) => 
+          typeof f === 'string' ? createFact(f) : f
+        );
+
         return {
           ...docData,
+          facts,
           date: docData.date || format(new Date(), 'yyyy-MM-dd'),
           notes: docData.notes || ""
-        };
+        } as LessonCard;
       });
       setCards(data);
 
@@ -309,7 +325,7 @@ export default function App() {
       year: "Year",
       title: "New topic",
       color: COLORS[cards.length % COLORS.length],
-      facts: ["Add a key point here"],
+      facts: [createFact("Add a key point here")],
       notes: "",
       month: config.activeMonth,
       date: format(new Date(), 'yyyy-MM-dd')
@@ -323,9 +339,13 @@ export default function App() {
     if (!syncKey || !activeCard || !targetMonth) return;
     try {
       const newId = "c" + Date.now();
+      // Generate new unique IDs for facts when duplicating
+      const duplicatedFacts = activeCard.facts.map(f => createFact(f.text));
+      
       const newCard: LessonCard = {
         ...activeCard,
         id: newId,
+        facts: duplicatedFacts,
         month: targetMonth,
         date: activeCard.date || format(new Date(), 'yyyy-MM-dd'),
         notes: activeCard.notes || "",
@@ -367,9 +387,14 @@ export default function App() {
         for (const month in data.cards) {
           for (const card of data.cards[month]) {
             const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id || ("c" + Math.random()));
+            // Ensure imported facts are migrated to object array
+            const facts = (card.facts || []).map((f: any) => 
+              typeof f === 'string' ? createFact(f) : f
+            );
             await setDoc(cardRef, { 
               ...card, 
               month, 
+              facts,
               date: card.date || format(new Date(), 'yyyy-MM-dd'),
               notes: card.notes || "",
               updatedAt: serverTimestamp() 
@@ -699,16 +724,21 @@ export default function App() {
               </div>
 
               <div className="section-label">Key points</div>
-              <ul className="facts-list">
+              <Reorder.Group axis="y" values={activeCard.facts} onReorder={(newFacts) => {
+                const newCards = cards.map(x => x.id === activeCard.id ? { ...x, facts: newFacts } : x);
+                setCards(newCards);
+              }} className="facts-list">
                 {activeCard.facts.map((f, i) => (
-                  <li key={i}>
-                    <span className="fdot" />
+                  <Reorder.Item key={f.id} value={f} className="fact-item">
+                    <div className="drag-handle">
+                      <GripVertical size={16} />
+                    </div>
                     <input 
                       className="fact-inp" 
-                      value={f} 
+                      value={f.text} 
                       onChange={(e) => {
                         const newFacts = [...activeCard.facts];
-                        newFacts[i] = e.target.value;
+                        newFacts[i] = { ...newFacts[i], text: e.target.value };
                         const newCards = cards.map(x => x.id === activeCard.id ? { ...x, facts: newFacts } : x);
                         setCards(newCards);
                       }}
@@ -723,13 +753,13 @@ export default function App() {
                     >
                       <X size={14} />
                     </button>
-                  </li>
+                  </Reorder.Item>
                 ))}
-              </ul>
+              </Reorder.Group>
               <button 
                 className="add-point-btn" 
                 onClick={() => {
-                  const newFacts = [...activeCard.facts, ""];
+                  const newFacts = [...activeCard.facts, createFact("")];
                   const newCards = cards.map(x => x.id === activeCard.id ? { ...x, facts: newFacts } : x);
                   setCards(newCards);
                 }}
