@@ -149,14 +149,18 @@ body {
   border-radius: var(--radius);
   padding: 1.25rem;
   cursor: pointer;
-  transition: transform 0.15s;
   border: 2px solid transparent;
   position: relative;
   min-height: 160px;
   display: flex;
   flex-direction: column;
+  transition: border-color 0.2s ease;
 }
-.card-thumb:hover { transform: translateY(-3px); }
+.card-thumb.is-dragging {
+  z-index: 100 !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1) !important;
+  cursor: grabbing;
+}
 .thumb-icon { font-size: 32px; margin-bottom: 10px; line-height: 1; display: block; }
 .thumb-year {
   font-size: 11px;
