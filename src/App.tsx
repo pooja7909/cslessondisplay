@@ -760,7 +760,6 @@ export default function App() {
                 </div>
               ) : (
                 <Reorder.Group 
-                  axis="y" 
                   values={currentMonthCards} 
                   onReorder={reorderCards}
                   className="cards-grid"
@@ -769,8 +768,15 @@ export default function App() {
                     <Reorder.Item 
                       key={c.id} 
                       value={c}
+                      layout
                       drag={yearFilter === "All Years"}
-                      className={`card-thumb ${c.color} relative group active:scale-[1.02] transition-transform`}
+                      whileHover={{ y: -4, scale: 1.01, boxShadow: "0 12px 30px rgba(0,0,0,0.08)" }}
+                      whileDrag={{ scale: 1.04, rotate: 1.2, boxShadow: "0 20px 40px rgba(0,0,0,0.12)", zIndex: 100 }}
+                      transition={{ 
+                        layout: { type: "spring", stiffness: 400, damping: 35 },
+                        default: { duration: 0.15 }
+                      }}
+                      className={`card-thumb ${c.color} relative group bg-white`}
                       onClick={() => setCurrentCardId(c.id)}
                     >
                       <div className="absolute top-2 right-2 flex flex-col items-end pointer-events-none">
@@ -938,8 +944,14 @@ export default function App() {
                 setCards(newCards);
               }} className="facts-list">
                 {activeCard.facts.map((f, i) => (
-                  <Reorder.Item key={f.id} value={f} className="fact-item">
-                    <div className="drag-handle">
+                  <Reorder.Item 
+                    key={f.id} 
+                    value={f} 
+                    className="fact-item"
+                    layout
+                    whileDrag={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.8)", boxShadow: "0 4px 12px rgba(0,0,0,0.05)", zIndex: 10 }}
+                  >
+                    <div className="drag-handle text-gray-400 hover:text-gray-600">
                       <GripVertical size={16} />
                     </div>
                     <input 
@@ -982,8 +994,14 @@ export default function App() {
                 setCards(newCards);
               }} className="facts-list">
                 {activeCard.objectives.map((o, i) => (
-                  <Reorder.Item key={o.id} value={o} className="fact-item">
-                    <div className="drag-handle">
+                  <Reorder.Item 
+                    key={o.id} 
+                    value={o} 
+                    className="fact-item"
+                    layout
+                    whileDrag={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.8)", boxShadow: "0 4px 12px rgba(0,0,0,0.05)", zIndex: 10 }}
+                  >
+                    <div className="drag-handle text-gray-400 hover:text-gray-600">
                       <GripVertical size={16} />
                     </div>
                     <input 
