@@ -760,9 +760,10 @@ export default function App() {
                 </div>
               ) : (
                 <Reorder.Group 
+                  axis="y"
                   values={currentMonthCards} 
                   onReorder={reorderCards}
-                  className="cards-grid"
+                  className="cards-list"
                 >
                   {currentMonthCards.map(c => (
                     <Reorder.Item 
@@ -770,38 +771,38 @@ export default function App() {
                       value={c}
                       layout
                       drag={yearFilter === "All Years"}
-                      whileHover={{ y: -4, scale: 1.01, boxShadow: "0 12px 30px rgba(0,0,0,0.08)" }}
-                      whileDrag={{ scale: 1.04, rotate: 1.2, boxShadow: "0 20px 40px rgba(0,0,0,0.12)", zIndex: 100 }}
+                      whileDrag={{ scale: 1.02, boxShadow: "0 20px 40px rgba(0,0,0,0.12)", zIndex: 100 }}
                       transition={{ 
-                        layout: { type: "spring", stiffness: 400, damping: 35 },
-                        default: { duration: 0.15 }
+                        layout: { type: "spring", stiffness: 600, damping: 45 },
                       }}
-                      className={`card-thumb ${c.color} relative group bg-white`}
+                      className={`card-row ${c.color} relative group`}
                       onClick={() => setCurrentCardId(c.id)}
                     >
-                      <div className="absolute top-2 right-2 flex flex-col items-end pointer-events-none">
-                        <LiveClock className="text-[10px] font-bold opacity-30" formatStr="p" />
-                        <LiveClock className="text-[8px] font-medium opacity-20" formatStr="EEE, MMM d" />
-                      </div>
-                      <span className="thumb-icon">{c.icon}</span>
-                      <div className="thumb-year">{c.year}{c.section ? ` • ${c.section}` : ""}</div>
-                      <div className="thumb-title">{c.title}</div>
-                      <div className="flex items-center justify-between mt-auto pt-2">
-                        <div className="thumb-facts-count">{c.facts.length} point{c.facts.length !== 1 ? "s" : ""}</div>
-                        <div className="text-[9px] opacity-60 font-medium flex flex-col items-end">
-                          <span>{c.date}</span>
-                          <span>{c.time}</span>
+                      <div className="flex items-center gap-4 w-full">
+                        <span className="thumb-icon !mb-0">{c.icon}</span>
+                        <div className="flex-1 min-width-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="thumb-year !mb-0">{c.year}{c.section ? ` • ${c.section}` : ""}</span>
+                            <span className="text-[10px] font-bold opacity-30">{c.time}</span>
+                          </div>
+                          <div className="thumb-title truncate">{c.title}</div>
+                        </div>
+                        <div className="text-right flex flex-col items-end gap-1">
+                          <div className="thumb-facts-count !pt-0">{c.facts.length} point{c.facts.length !== 1 ? "s" : ""}</div>
+                          <div className="text-[9px] opacity-40 font-medium">{c.date}</div>
                         </div>
                       </div>
+
                       <button 
                         className="del-card-btn flex items-center justify-center !p-1.5" 
                         onClick={(e) => { e.stopPropagation(); confirmDelete(c.id); }}
                       >
                         <Trash2 size={14} />
                       </button>
+                      
                       {yearFilter === "All Years" && (
-                        <div className="absolute bottom-2 right-2 text-gray-500 opacity-0 group-hover:opacity-40 transition-opacity pointer-events-none">
-                          <GripVertical size={14} />
+                        <div className="absolute top-1/2 -translate-y-1/2 -left-8 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2">
+                          <GripVertical size={18} />
                         </div>
                       )}
                     </Reorder.Item>
