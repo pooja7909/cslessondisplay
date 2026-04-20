@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence, Reorder } from "motion/react";
+import { useState, useEffect, useCallback, useRef, memo, type MouseEvent as ReactMouseEvent, type FC } from "react";
+import { motion, AnimatePresence, Reorder, useDragControls } from "motion/react";
 import { 
   collection, 
   doc, 
@@ -239,6 +239,68 @@ interface UserConfig {
   months: string[];
 }
 
+interface CardRowProps {
+  card: LessonCard;
+  isDraggable: boolean;
+  onClick: () => void;
+  onDelete: (e: ReactMouseEvent) => void;
+}
+
+const CardRowItem: FC<CardRowProps> = memo(({ card, isDraggable, onClick, onDelete }) => {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item 
+      value={card}
+      layout
+      drag={isDraggable ? "y" : false}
+      dragListener={false}
+      dragControls={dragControls}
+      whileDrag={{ 
+        scale: 1.02, 
+        boxShadow: "0 20px 40px rgba(0,0,0,0.12)", 
+        zIndex: 100,
+        backgroundColor: "rgba(255, 255, 255, 0.9)" 
+      }}
+      transition={{ 
+        layout: { type: "spring", stiffness: 600, damping: 45 },
+      }}
+      className={`card-row ${card.color} relative group`}
+    >
+      <div className="flex items-center gap-4 w-full" onClick={onClick}>
+        <span className="thumb-icon !mb-0">{card.icon}</span>
+        <div className="flex-1 min-width-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="thumb-year !mb-0">{card.year}{card.section ? ` • ${card.section}` : ""}</span>
+            <span className="text-[10px] font-bold opacity-30">{card.time}</span>
+          </div>
+          <div className="thumb-title truncate">{card.title}</div>
+        </div>
+        <div className="text-right flex flex-col items-end gap-1">
+          <div className="thumb-facts-count !pt-0">{card.facts.length} point{card.facts.length !== 1 ? "s" : ""}</div>
+          <div className="text-[9px] opacity-40 font-medium">{card.date}</div>
+        </div>
+      </div>
+
+      <button 
+        className="del-card-btn flex items-center justify-center !p-1.5" 
+        onClick={onDelete}
+      >
+        <Trash2 size={14} />
+      </button>
+      
+      {isDraggable && (
+        <div 
+          className="absolute top-1/2 -translate-y-1/2 -left-8 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2"
+          onPointerDown={(e) => dragControls.start(e)}
+        >
+          <GripVertical size={18} />
+        </div>
+      )}
+    </Reorder.Item>
+  );
+});
+
 export default function App() {
   const [syncKey, setSyncKey] = useState<string | null>(localStorage.getItem(SYNC_KEY_LS));
   const [config, setConfig] = useState<UserConfig>({
@@ -258,6 +320,7 @@ export default function App() {
   const [showSavedToast, setShowSavedToast] = useState(false);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [yearFilter, setYearFilter] = useState<string>("All Years");
+  const reorderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const yearGroups = ["All Years", ...Array.from(new Set(cards.map(c => c.year))).sort()];
 
@@ -399,22 +462,30 @@ export default function App() {
     setCurrentCardId(id);
   };
 
-  const reorderCards = async (newOrderedCards: LessonCard[]) => {
+  const reorderCards = (newOrderedCards: LessonCard[]) => {
     if (!syncKey) return;
     
-    // Optimistically update local state for smoothness
-    // We update the full cards array by merging the newly ordered subset
+    // 1. Immediate local update for perfect smoothness
     const otherCards = cards.filter(c => !newOrderedCards.find(nc => nc.id === c.id));
     const finalCards = [...otherCards, ...newOrderedCards.map((c, i) => ({ ...c, order: i }))];
     setCards(finalCards);
 
-    // Persist to Firestore
-    const batch = writeBatch(db);
-    newOrderedCards.forEach((card, index) => {
-      const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
-      batch.update(cardRef, { order: index, updatedAt: serverTimestamp() });
-    });
-    await batch.commit();
+    // 2. Debounced persistence to Firestore
+    if (reorderTimeoutRef.current) clearTimeout(reorderTimeoutRef.current);
+    
+    reorderTimeoutRef.current = setTimeout(async () => {
+      try {
+        const batch = writeBatch(db);
+        newOrderedCards.forEach((card, index) => {
+          const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
+          batch.update(cardRef, { order: index, updatedAt: serverTimestamp() });
+        });
+        await batch.commit();
+        console.log("Reorder synced to Cloud");
+      } catch (err) {
+        console.error("Reorder sync failed:", err);
+      }
+    }, 1000); // Wait for 1 second of inactivity before saving
   };
 
   const duplicateCard = async () => {
@@ -766,46 +837,13 @@ export default function App() {
                   className="cards-list"
                 >
                   {currentMonthCards.map(c => (
-                    <Reorder.Item 
+                    <CardRowItem 
                       key={c.id} 
-                      value={c}
-                      layout
-                      drag={yearFilter === "All Years"}
-                      whileDrag={{ scale: 1.02, boxShadow: "0 20px 40px rgba(0,0,0,0.12)", zIndex: 100 }}
-                      transition={{ 
-                        layout: { type: "spring", stiffness: 600, damping: 45 },
-                      }}
-                      className={`card-row ${c.color} relative group`}
+                      card={c} 
+                      isDraggable={yearFilter === "All Years"}
                       onClick={() => setCurrentCardId(c.id)}
-                    >
-                      <div className="flex items-center gap-4 w-full">
-                        <span className="thumb-icon !mb-0">{c.icon}</span>
-                        <div className="flex-1 min-width-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="thumb-year !mb-0">{c.year}{c.section ? ` • ${c.section}` : ""}</span>
-                            <span className="text-[10px] font-bold opacity-30">{c.time}</span>
-                          </div>
-                          <div className="thumb-title truncate">{c.title}</div>
-                        </div>
-                        <div className="text-right flex flex-col items-end gap-1">
-                          <div className="thumb-facts-count !pt-0">{c.facts.length} point{c.facts.length !== 1 ? "s" : ""}</div>
-                          <div className="text-[9px] opacity-40 font-medium">{c.date}</div>
-                        </div>
-                      </div>
-
-                      <button 
-                        className="del-card-btn flex items-center justify-center !p-1.5" 
-                        onClick={(e) => { e.stopPropagation(); confirmDelete(c.id); }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                      
-                      {yearFilter === "All Years" && (
-                        <div className="absolute top-1/2 -translate-y-1/2 -left-8 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-2">
-                          <GripVertical size={18} />
-                        </div>
-                      )}
-                    </Reorder.Item>
+                      onDelete={(e) => { e.stopPropagation(); confirmDelete(c.id); }}
+                    />
                   ))}
                 </Reorder.Group>
               )}
