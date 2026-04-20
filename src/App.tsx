@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, memo, type MouseEvent as ReactMouseEvent, type FC } from "react";
+import { useState, useEffect, useCallback, useRef, memo, useMemo, type MouseEvent as ReactMouseEvent, type FC } from "react";
 import { motion, AnimatePresence, Reorder, useDragControls } from "motion/react";
 import { 
   collection, 
@@ -321,6 +321,7 @@ export default function App() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [yearFilter, setYearFilter] = useState<string>("All Years");
   const reorderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isReorderingLocal = useRef(false);
 
   const yearGroups = ["All Years", ...Array.from(new Set(cards.map(c => c.year))).sort()];
 
@@ -380,7 +381,10 @@ export default function App() {
           order: typeof docData.order === 'number' ? docData.order : 0
         } as LessonCard;
       });
-      setCards(data);
+      
+      if (!isReorderingLocal.current) {
+        setCards(data);
+      }
 
       // If the collection is strictly empty OR missing core system IDs, seed them
       // This helps users who lost data or have a partial sync
@@ -466,8 +470,19 @@ export default function App() {
     if (!syncKey) return;
     
     // 1. Immediate local update for perfect smoothness
-    const otherCards = cards.filter(c => !newOrderedCards.find(nc => nc.id === c.id));
-    const finalCards = [...otherCards, ...newOrderedCards.map((c, i) => ({ ...c, order: i }))];
+    isReorderingLocal.current = true;
+    
+    // Use a lookup map for faster ID-based replacement
+    const newOrderMap = new Map(newOrderedCards.map((c, i) => [c.id, i]));
+    
+    // Update the entire cards array, only modifying the 'order' for items in the current set
+    const finalCards = cards.map(c => {
+      if (newOrderMap.has(c.id)) {
+        return { ...c, order: newOrderMap.get(c.id)! };
+      }
+      return c;
+    });
+    
     setCards(finalCards);
 
     // 2. Debounced persistence to Firestore
@@ -482,10 +497,16 @@ export default function App() {
         });
         await batch.commit();
         console.log("Reorder synced to Cloud");
+        
+        // Brief pause after successful sync before allowing external signals to override
+        setTimeout(() => {
+          isReorderingLocal.current = false;
+        }, 800);
       } catch (err) {
         console.error("Reorder sync failed:", err);
+        isReorderingLocal.current = false;
       }
-    }, 1000); // Wait for 1 second of inactivity before saving
+    }, 600); // Shorter debounce for a snappier feel
   };
 
   const duplicateCard = async () => {
@@ -619,13 +640,15 @@ export default function App() {
     setModalType(null);
   };
 
-  const currentMonthCards = cards
-    .filter(c => {
-      const monthMatch = c.month === config.activeMonth;
-      const yearMatch = yearFilter === "All Years" || c.year === yearFilter;
-      return monthMatch && yearMatch;
-    })
-    .sort((a, b) => a.order - b.order);
+  const currentMonthCards = useMemo(() => {
+    return cards
+      .filter(c => {
+        const monthMatch = c.month === config.activeMonth;
+        const yearMatch = yearFilter === "All Years" || c.year === yearFilter;
+        return monthMatch && yearMatch;
+      })
+      .sort((a, b) => a.order - b.order);
+  }, [cards, config.activeMonth, yearFilter]);
   const activeCard = cards.find(c => c.id === currentCardId);
 
   const formatTimestamp = (ts: any) => {
