@@ -451,29 +451,34 @@ export default function App() {
         } as LessonCard;
       });
 
-      // 1. Migration from legacy path (users/{syncKey}/cards)
-      // Check legacy path if the new path is empty OR if we suspect missing data
-      if (snap.empty) {
-        try {
-          const legacyCardsRef = collection(db, "users", syncKey, "cards");
-          const legacyDocs = await getDocs(legacyCardsRef);
+      // 1. Robust Migration from legacy path (users/{syncKey}/cards)
+      // We check legacy path once per session or whenever the session starts
+      // to ensure no data (like April Year 12 notes) was left behind.
+      try {
+        const legacyCardsRef = collection(db, "users", syncKey, "cards");
+        const legacyDocs = await getDocs(legacyCardsRef);
+        
+        if (!legacyDocs.empty) {
+          const batch = writeBatch(db);
+          let migrationCount = 0;
           
-          if (!legacyDocs.empty) {
-            console.log(`Found ${legacyDocs.size} cards in legacy path, migrating...`);
-            const batch = writeBatch(db);
-            legacyDocs.docs.forEach(d => {
+          legacyDocs.docs.forEach(d => {
+            // Only migrate if it doesn't exist in the NEW path
+            if (!snap.docs.some(newDoc => newDoc.id === d.id)) {
               const newRef = doc(db, "lesson_profiles", syncKey, "cards", d.id);
               batch.set(newRef, { ...d.data(), updatedAt: serverTimestamp() });
-              // Also delete from legacy path to avoid repeated migration
-              const oldRef = doc(db, "users", syncKey, "cards", d.id);
-              batch.delete(oldRef);
-            });
+              migrationCount++;
+            }
+          });
+          
+          if (migrationCount > 0) {
+            console.log(`Migrating ${migrationCount} items from legacy path...`);
             await batch.commit();
             return; // onSnapshot will trigger again
           }
-        } catch (e) {
-          console.error("Migration check failed", e);
         }
+      } catch (e) {
+        console.error("Migration check failed", e);
       }
 
       // 2. Auto-recovery: If there are cards for months not in the month list, add them!
@@ -485,12 +490,12 @@ export default function App() {
         missingMonths.forEach(m => {
           if (!newMonths.includes(m)) newMonths.push(m);
         });
-        // Sort months roughly to keep August first if it was added
+        // Sort months strictly to keep August first
         const sortedMonths = ["August", ...newMonths.filter(m => m !== "August")];
         updateConfig({ months: sortedMonths });
       }
 
-      // 3. Auto-seeding of defaults (ONLY if completely empty and no legacy data)
+      // 3. Auto-seeding of defaults (ONLY if both paths are completely empty)
       if (currentCards.length === 0) {
         const existingIds = snap.docs.map(d => d.id);
         const missingDefaults = INITIAL_CARDS.filter(c => !existingIds.includes(c.id));
@@ -1404,8 +1409,8 @@ export default function App() {
                 className="confirm !bg-red-600" 
                 onClick={() => {
                   if(confirm("This will disconnect this device. You will need to enter your code again to see your data. Continue?")) {
-                    localStorage.removeItem(SYNC_KEY_LS);
-                    window.location.reload(); // Force full reload to clear all states
+                    localStorage.clear(); // Clear all sync keys and settings
+                    window.location.reload(); // Force full reload to entry screen
                   }
                 }}
               >
