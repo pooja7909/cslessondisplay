@@ -60,5 +60,20 @@ service cloud.firestore {
         allow delete: if isValidSyncKey(syncKey);
       }
     }
+
+    // Rules for User Profiles (Blueprint path)
+    match /users/{userId} {
+      match /config {
+        allow read: if isValidSyncKey(userId);
+        allow create, update: if isValidSyncKey(userId) && isValidUserConfig(incoming());
+        allow delete: if isValidSyncKey(userId);
+      }
+      
+      match /cards/{cardId} {
+        allow read: if isValidSyncKey(userId);
+        allow create, update: if isValidSyncKey(userId) && isValidLessonCard(incoming());
+        allow delete: if isValidSyncKey(userId);
+      }
+    }
   }
 }
