@@ -10,9 +10,12 @@ import {
   where,
   serverTimestamp,
   getDoc,
-  writeBatch
+  getDocs,
+  writeBatch,
+  FirestoreError
 } from "firebase/firestore";
 import { db } from "./lib/firebase";
+import { auth } from "./lib/firebase"; // Note: auth might not be exported but we should handle it safely
 import { Download, Upload, Plus, ChevronLeft, Check, Trash2, X, Copy, RefreshCw, Key, Calendar as CalendarIcon, LayoutList, ChevronRight, GripVertical, Clock } from "lucide-react";
 import { 
   format, 
@@ -29,9 +32,46 @@ import {
   isToday
 } from "date-fns";
 
-// Constants
+// Error handling helpers
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const isPermissionError = error instanceof Error && error.message.toLowerCase().includes('permission');
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid || null,
+      email: auth.currentUser?.email || null,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  
+  if (isPermissionError) {
+    // Show a user-friendly alert if it's a permission issue, hinting at the sync code rules
+    alert(`Sync Error: You don't have permission to access "${path}". Please check if your Sync Code matches the permitted format (4-100 characters, alphanumeric).`);
+  }
+}
 const COLORS = ["col0", "col1", "col2", "col3", "col4", "col5", "col6", "col7"];
-const DEFAULT_MONTHS = ["September", "October", "November"];
+const DEFAULT_MONTHS = ["August", "September", "October", "November", "December", "January", "February", "March", "April", "May", "June", "July"];
 const SYNC_KEY_LS = "lesson_app_sync_key";
 
 const createFact = (text: string): Fact => ({
@@ -66,8 +106,8 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     ],
     objectives: [],
     notes: "",
-    month: "September",
-    date: "2026-09-07"
+    month: "August",
+    date: "2026-08-24"
   },
   {
     id: "c1_2",
@@ -86,8 +126,8 @@ const INITIAL_CARDS: Omit<LessonCard, "updatedAt">[] = [
     ],
     objectives: [],
     notes: "",
-    month: "September",
-    date: "2026-09-10"
+    month: "August",
+    date: "2026-08-27"
   },
   {
     id: "c2",
@@ -305,7 +345,7 @@ export default function App() {
   const [syncKey, setSyncKey] = useState<string | null>(localStorage.getItem(SYNC_KEY_LS));
   const [config, setConfig] = useState<UserConfig>({
     title: "Lesson Display",
-    activeMonth: "September",
+    activeMonth: "August",
     months: DEFAULT_MONTHS,
   });
   const [cards, setCards] = useState<LessonCard[]>([]);
@@ -325,16 +365,26 @@ export default function App() {
 
   const yearGroups = ["All Years", ...Array.from(new Set(cards.map(c => c.year))).sort()];
 
-  // Auto-focus calendar on first lesson if current month is empty
+  // Auto-focus calendar or month if current view is empty
   useEffect(() => {
-    if (viewMode === "calendar" && cards.length > 0) {
-      const currentMonthLessons = cards.filter(c => isSameMonth(parseISO(c.date), calendarDate));
-      if (currentMonthLessons.length === 0) {
-        // Find the earliest lesson
-        const sortedLessons = [...cards].sort((a, b) => a.date.localeCompare(b.date));
-        const firstLessonDate = parseISO(sortedLessons[0].date);
-        if (!isSameMonth(firstLessonDate, calendarDate)) {
-          setCalendarDate(firstLessonDate);
+    if (cards.length > 0) {
+      if (viewMode === "calendar") {
+        const currentMonthLessons = cards.filter(c => isSameMonth(parseISO(c.date), calendarDate));
+        if (currentMonthLessons.length === 0) {
+          const sortedLessons = [...cards].sort((a, b) => a.date.localeCompare(b.date));
+          const firstLessonDate = parseISO(sortedLessons[0].date);
+          if (!isSameMonth(firstLessonDate, calendarDate)) {
+            setCalendarDate(firstLessonDate);
+          }
+        }
+      } else if (viewMode === "list") {
+        const monthCards = cards.filter(c => c.month === config.activeMonth);
+        if (monthCards.length === 0) {
+          // Find first month that HAS cards
+          const monthWithCards = config.months.find(m => cards.some(c => c.month === m));
+          if (monthWithCards && monthWithCards !== config.activeMonth) {
+            updateConfig({ activeMonth: monthWithCards });
+          }
         }
       }
     }
@@ -348,21 +398,40 @@ export default function App() {
     const configRef = doc(db, "lesson_profiles", syncKey, "config", "main");
     const unsubConfig = onSnapshot(configRef, async (docSnap) => {
       if (docSnap.exists()) {
-        setConfig(docSnap.data() as UserConfig);
+        const data = docSnap.data() as UserConfig;
+        // Ensure August is strictly first if it exists
+        const allMonths = data.months || DEFAULT_MONTHS;
+        if (allMonths.includes("August")) {
+           data.months = ["August", ...allMonths.filter(m => m !== "August")];
+        } else {
+           data.months = ["August", ...allMonths];
+        }
+        setConfig(data);
       } else {
-        await setDoc(configRef, {
-          title: "Lesson Display",
-          activeMonth: "September",
-          months: DEFAULT_MONTHS,
-        });
+        // Try to recover from legacy path if exists
+        const legacyConfigRef = doc(db, "users", syncKey, "config");
+        const legacySnap = await getDoc(legacyConfigRef);
+        if (legacySnap.exists()) {
+          const legacyData = legacySnap.data() as UserConfig;
+          await setDoc(configRef, legacyData);
+          setConfig(legacyData);
+          console.log("Recovered config from legacy path");
+        } else {
+          await setDoc(configRef, {
+            title: "Lesson Display",
+            activeMonth: "August",
+            months: DEFAULT_MONTHS,
+          });
+        }
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `lesson_profiles/${syncKey}/config/main`);
     });
 
     const cardsRef = collection(db, "lesson_profiles", syncKey, "cards");
     const unsubCards = onSnapshot(cardsRef, async (snap) => {
-      const data = snap.docs.map(d => {
+      let currentCards = snap.docs.map(d => {
         const docData = d.data();
-        // Migration/Sanitization: Ensure mandatory fields exist for UI
         const facts = (docData.facts || []).map((f: any) => 
           typeof f === 'string' ? createFact(f) : f
         );
@@ -381,24 +450,69 @@ export default function App() {
           order: typeof docData.order === 'number' ? docData.order : 0
         } as LessonCard;
       });
-      
-      if (!isReorderingLocal.current) {
-        setCards(data);
-      }
 
-      // If the collection is strictly empty OR missing core system IDs, seed them
-      // This helps users who lost data or have a partial sync
-      const existingIds = snap.docs.map(d => d.id);
-      const missingDefaults = INITIAL_CARDS.filter(c => !existingIds.includes(c.id));
-      
-      // Seed missing defaults automatically - users can still delete them later if they want
-      // But this ensures they get the full set of Year 8, 9, 10, and 12 on first sync
-      if (missingDefaults.length > 0 && existingIds.length < INITIAL_CARDS.length) {
-        for (const card of missingDefaults) {
-          const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
-          await setDoc(cardRef, { ...card, updatedAt: serverTimestamp() });
+      // 1. Migration from legacy path (users/{syncKey}/cards)
+      // Check legacy path if the new path is empty OR if we suspect missing data
+      if (snap.empty) {
+        try {
+          const legacyCardsRef = collection(db, "users", syncKey, "cards");
+          const legacyDocs = await getDocs(legacyCardsRef);
+          
+          if (!legacyDocs.empty) {
+            console.log(`Found ${legacyDocs.size} cards in legacy path, migrating...`);
+            const batch = writeBatch(db);
+            legacyDocs.docs.forEach(d => {
+              const newRef = doc(db, "lesson_profiles", syncKey, "cards", d.id);
+              batch.set(newRef, { ...d.data(), updatedAt: serverTimestamp() });
+              // Also delete from legacy path to avoid repeated migration
+              const oldRef = doc(db, "users", syncKey, "cards", d.id);
+              batch.delete(oldRef);
+            });
+            await batch.commit();
+            return; // onSnapshot will trigger again
+          }
+        } catch (e) {
+          console.error("Migration check failed", e);
         }
       }
+
+      // 2. Auto-recovery: If there are cards for months not in the month list, add them!
+      const cardMonths = Array.from(new Set(currentCards.map(c => c.month)));
+      const missingMonths = cardMonths.filter(m => m && !config.months.includes(m));
+      if (missingMonths.length > 0) {
+        console.log("Auto-recovering months:", missingMonths);
+        const newMonths = [...config.months];
+        missingMonths.forEach(m => {
+          if (!newMonths.includes(m)) newMonths.push(m);
+        });
+        // Sort months roughly to keep August first if it was added
+        const sortedMonths = ["August", ...newMonths.filter(m => m !== "August")];
+        updateConfig({ months: sortedMonths });
+      }
+
+      // 3. Auto-seeding of defaults (ONLY if completely empty and no legacy data)
+      if (currentCards.length === 0) {
+        const existingIds = snap.docs.map(d => d.id);
+        const missingDefaults = INITIAL_CARDS.filter(c => !existingIds.includes(c.id));
+        
+        if (missingDefaults.length > 0) {
+          for (const card of missingDefaults) {
+            try {
+              const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
+              await setDoc(cardRef, { ...card, updatedAt: serverTimestamp() });
+            } catch (e) {
+              handleFirestoreError(e, OperationType.WRITE, `lesson_profiles/${syncKey}/cards/${card.id}`);
+            }
+          }
+          return; // Wait for next snapshot
+        }
+      }
+      
+      if (!isReorderingLocal.current) {
+        setCards(currentCards);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `lesson_profiles/${syncKey}/cards`);
     });
 
     return () => {
@@ -659,26 +773,48 @@ export default function App() {
 
   if (!syncKey) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center bg-[#f5f3ef] p-6">
-        <div className="bg-white p-12 rounded-3xl shadow-xl flex flex-col items-center gap-6 max-w-sm w-full">
-          <div className="text-4xl">🖇️</div>
-          <h1 className="text-2xl font-bold font-sans text-[#1a1744]">Lesson Display</h1>
-          <p className="text-center text-gray-500 text-sm">To sync across all your devices, enter a unique Sync Code below.</p>
-          <div className="flex flex-col gap-3 w-full">
-            <input 
-              className="w-full p-3 border rounded-xl outline-none focus:border-[#534AB7]"
-              placeholder="e.g. MyClass-2024"
-              value={newSyncKey}
-              onChange={(e) => setNewSyncKey(e.target.value)}
-            />
+      <div className="flex h-screen flex-col items-center justify-center bg-[#f5f3ef] p-6 text-[#1a1744]">
+        <div className="bg-white p-12 rounded-[40px] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.1)] flex flex-col items-center gap-8 max-w-md w-full border border-white">
+          <div className="w-20 h-20 bg-[#534AB7]/5 rounded-[32px] flex items-center justify-center text-4xl shadow-inner">🖇️</div>
+          <div className="text-center">
+            <h1 className="text-3xl font-bold font-sans tracking-tight mb-2">Welcome Back</h1>
+            <p className="text-gray-500 text-sm leading-relaxed px-4">
+              Enter your <strong>Sync Code</strong> to retrieve your lesson plans and sync them across all your devices.
+            </p>
+          </div>
+          <div className="flex flex-col gap-4 w-full">
+            <div className="relative">
+              <input 
+                className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent rounded-[24px] outline-none focus:border-[#534AB7] focus:bg-white transition-all font-medium placeholder:text-gray-300 shadow-sm"
+                placeholder="e.g. Arora2026"
+                value={newSyncKey}
+                onChange={(e) => setNewSyncKey(e.target.value)}
+              />
+              <Key size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" />
+            </div>
             <button 
-              onClick={() => setupSyncKey(newSyncKey || "Class-" + Math.floor(Math.random()*10000))}
-              className="flex items-center justify-center gap-2 bg-[#534AB7] text-white px-8 py-3 rounded-xl font-semibold hover:bg-[#3C3489] transition-all cursor-pointer w-full"
+              onClick={() => setupSyncKey(newSyncKey)}
+              disabled={!newSyncKey.trim()}
+              className="flex items-center justify-center gap-2 bg-[#534AB7] text-white px-8 py-4 rounded-[24px] font-bold shadow-[0_8px_16px_rgba(83,74,183,0.3)] hover:bg-[#3C3489] hover:shadow-[0_12px_20px_rgba(83,74,183,0.4)] disabled:opacity-50 disabled:shadow-none transition-all cursor-pointer w-full text-lg active:scale-[0.98]"
             >
-              <RefreshCw size={18} />
-              Start Syncing
+              <RefreshCw size={20} className={newSyncKey.trim() ? "" : "opacity-50"} />
+              Connect to Sync Code
             </button>
-            <p className="text-[10px] text-center text-gray-400">Use this same code on your phone or laptop to see your lessons.</p>
+            <div className="relative py-2">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100"></div></div>
+              <div className="relative flex justify-center text-[11px] uppercase font-bold tracking-widest text-gray-300"><span className="bg-white px-3">or</span></div>
+            </div>
+            <button 
+              onClick={() => setupSyncKey("Class-" + Math.floor(1000 + Math.random()*9000))}
+              className="text-[13px] font-bold text-[#534AB7]/60 hover:text-[#534AB7] transition-colors py-2"
+            >
+              + Create new empty profile
+            </button>
+          </div>
+          <div className="bg-[#534AB7]/5 p-4 rounded-[20px] w-full mt-2">
+            <p className="text-[10px] leading-normal text-center text-[#534AB7]/60 font-medium">
+              Data is synced in real-time. Use the same code on your phone or tablet to see changes instantly.
+            </p>
           </div>
         </div>
       </div>
@@ -768,6 +904,13 @@ export default function App() {
           title="Click to rename"
         />
         <div className="nav-actions">
+          <div className="hidden md:flex flex-col items-end justify-center mr-4 opacity-70">
+             <div className="text-[9px] font-extrabold flex items-center gap-1.5 text-[#534AB7]">
+               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+               SYNCING {cards.length} LESSONS
+             </div>
+             <div className="text-[10px] font-mono leading-none bg-[#534AB7]/5 px-1.5 py-0.5 rounded mt-0.5 truncate max-w-[100px]">{syncKey}</div>
+          </div>
           <button 
             className="nav-btn p-2" 
             onClick={() => setViewMode(viewMode === "list" ? "calendar" : "list")}
@@ -957,9 +1100,14 @@ export default function App() {
               </div>
 
               <div className="save-row">
-                <button className="exp-save-btn" onClick={() => saveCard(activeCard)}>Save</button>
+                <button className="exp-save-btn flex items-center gap-2" onClick={() => saveCard(activeCard)}>
+                   <Check size={16} /> Save Changes
+                </button>
+                <div className="text-[10px] text-gray-400 font-medium ml-2">
+                   {activeCard.updatedAt ? `Synced at ${formatTimestamp(activeCard.updatedAt)}` : "Pending sync..."}
+                </div>
                 <button 
-                  className="nav-btn !bg-white !text-[#1a1744] border !border-gray-200 flex items-center gap-1"
+                  className="nav-btn !bg-white !text-[#1a1744] border !border-gray-200 flex items-center gap-1 ml-auto"
                   onClick={duplicateCard}
                   title="Clone this lesson for another section"
                 >
@@ -1237,12 +1385,12 @@ export default function App() {
               <button 
                 className="nav-btn !bg-gray-100 !text-gray-600 !border !border-gray-200"
                 onClick={async () => {
-                  if (confirm("Restore the default year 8, 9, 10 and 12 lessons? This won't delete your custom cards.")) {
+                  if (confirm("Restore the default year 8, 9, 10 and 12 lessons? Your custom charts and any April data will stay safe, but default lessons (Year 8 HTML, etc.) will be reset to original state. Continue?")) {
                     for (const card of INITIAL_CARDS) {
                       const cardRef = doc(db, "lesson_profiles", syncKey, "cards", card.id);
                       await setDoc(cardRef, { ...card, updatedAt: serverTimestamp() });
                     }
-                    alert("Default lessons restored!");
+                    alert("Default lessons updated! Your custom lessons were not changed.");
                     setModalType(null);
                   }
                 }}
@@ -1257,7 +1405,7 @@ export default function App() {
                 onClick={() => {
                   if(confirm("This will disconnect this device. You will need to enter your code again to see your data. Continue?")) {
                     localStorage.removeItem(SYNC_KEY_LS);
-                    window.location.reload();
+                    window.location.reload(); // Force full reload to clear all states
                   }
                 }}
               >
